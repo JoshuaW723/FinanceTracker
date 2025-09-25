@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -9,17 +9,23 @@ import { MiniBarChart } from "../../components/MiniBarChart";
 import { colors, components, spacing, typography } from "../../theme";
 import { useFinanceStore } from "../../lib/store";
 
-const formatCurrency = (value: number, currency: string) =>
+const formatCurrency = (
+  value: number,
+  currency: string,
+  options?: Intl.NumberFormatOptions,
+) =>
   new Intl.NumberFormat(undefined, {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
+    ...options,
   }).format(value);
 
 export default function HomeScreen() {
   const router = useRouter();
   const transactions = useFinanceStore((state) => state.transactions);
   const profile = useFinanceStore((state) => state.profile);
+  const [spendingPeriod, setSpendingPeriod] = useState<"week" | "month">("week");
 
   const balance = useMemo(
     () =>
@@ -79,6 +85,55 @@ export default function HomeScreen() {
     ? Math.min(100, Math.round((expenseThisMonth / incomeThisMonth) * 100))
     : 0;
 
+  const topSpending = useMemo(() => {
+    const today = dayjs();
+    const rangeStart =
+      spendingPeriod === "week" ? today.startOf("week") : today.startOf("month");
+    const rangeEnd =
+      spendingPeriod === "week" ? today.endOf("week") : today.endOf("month");
+
+    const expenses = transactions.filter((transaction) => {
+      if (transaction.type !== "expense") {
+        return false;
+      }
+
+      const date = dayjs(transaction.date);
+      return !date.isBefore(rangeStart) && !date.isAfter(rangeEnd);
+    });
+
+    const totalsByCategory = expenses.reduce((acc, transaction) => {
+      const previous = acc.get(transaction.category) ?? 0;
+      acc.set(transaction.category, previous + transaction.amount);
+      return acc;
+    }, new Map<string, number>());
+
+    let topCategory: { name: string; amount: number } | null = null;
+    totalsByCategory.forEach((amount, name) => {
+      if (!topCategory || amount > topCategory.amount) {
+        topCategory = { name, amount };
+      }
+    });
+
+    const totalSpent = expenses.reduce((acc, transaction) => acc + transaction.amount, 0);
+
+    return {
+      category: topCategory?.name ?? null,
+      amount: topCategory?.amount ?? 0,
+      percentage: totalSpent ? Math.round(((topCategory?.amount ?? 0) / totalSpent) * 100) : 0,
+      totalSpent,
+    };
+  }, [spendingPeriod, transactions]);
+
+  const netIsPositive = netPositive >= 0;
+  const netBadgeColor = netIsPositive ? colors.success : colors.danger;
+  const netBadgeBackground = netIsPositive
+    ? "rgba(52,211,153,0.12)"
+    : "rgba(251,113,133,0.12)";
+  const netIcon = netIsPositive ? "trending-up" : "trending-down";
+  const netLabel = `${formatCurrency(netPositive, currency, { signDisplay: "always" })} net`;
+
+  const spendingLabel = spendingPeriod === "week" ? "week" : "month";
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -91,9 +146,9 @@ export default function HomeScreen() {
           <Text style={styles.balanceLabel}>Current balance</Text>
           <Text style={styles.balanceValue}>{formattedBalance}</Text>
           <View style={styles.balanceMetaRow}>
-            <View style={styles.metaBadge}>
-              <Ionicons name="trending-up" size={16} color={colors.success} />
-              <Text style={styles.metaText}>{formatCurrency(netPositive, currency)} net</Text>
+            <View style={[styles.metaBadge, { backgroundColor: netBadgeBackground }]}>
+              <Ionicons name={netIcon} size={16} color={netBadgeColor} />
+              <Text style={[styles.metaText, { color: netBadgeColor }]}>{netLabel}</Text>
             </View>
             <Text style={styles.metaCaption}>{dayjs().format("MMMM YYYY")}</Text>
           </View>
@@ -112,18 +167,73 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        <View style={[components.surface, styles.topSpendingCard]}>
+          <View style={styles.topSpendingHeader}>
+            <Text style={styles.topSpendingTitle}>Top spending</Text>
+            <View style={styles.periodSwitch}>
+              {["week", "month"].map((period) => {
+                const active = spendingPeriod === period;
+                return (
+                  <Pressable
+                    key={period}
+                    onPress={() => setSpendingPeriod(period as typeof spendingPeriod)}
+                    style={[styles.periodPill, active && styles.periodPillActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.periodLabel, active && styles.periodLabelActive]}>
+                      {period === "week" ? "This week" : "This month"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {topSpending.category ? (
+            <View style={styles.topSpendingBody}>
+              <View style={styles.topSpendingRow}>
+                <View>
+                  <Text style={styles.topSpendingCaption}>Highest category</Text>
+                  <Text style={styles.topSpendingCategory}>{topSpending.category}</Text>
+                </View>
+                <Text style={styles.topSpendingAmount}>
+                  {formatCurrency(topSpending.amount, currency)}
+                </Text>
+              </View>
+              <View style={styles.spendingProgressTrack}>
+                <View style={[styles.spendingProgressFill, { width: `${topSpending.percentage}%` }]} />
+              </View>
+              <Text style={styles.spendingSummary}>
+                {topSpending.percentage}% of your spending this {spendingLabel}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="leaf-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.emptyStateText}>
+                No expenses tracked for this {spendingLabel} yet.
+              </Text>
+            </View>
+          )}
+        </View>
+
         <View style={[components.surface, styles.chartCard]}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>7-day cash flow</Text>
             <Text style={styles.chartCaption}>Income vs. spend</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chartContent}
+          >
             <MiniBarChart data={chartData} style={styles.chart} />
           </ScrollView>
         </View>
       </ScrollView>
 
-      <Pressable accessibilityRole="button" style={styles.fab} onPress={() => router.push("/transactions/new")}> 
+      <Pressable accessibilityRole="button" style={styles.fab} onPress={() => router.push("/transactions/new")}>
         <Ionicons name="add" size={28} color={colors.text} />
       </Pressable>
     </SafeAreaView>
@@ -171,7 +281,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    backgroundColor: "rgba(52,211,153,0.12)",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: 999,
@@ -179,7 +288,6 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 13,
     fontWeight: "500",
-    color: colors.success,
   },
   metaCaption: {
     fontSize: 13,
@@ -240,6 +348,11 @@ const styles = StyleSheet.create({
   chart: {
     paddingVertical: spacing.md,
   },
+  chartContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingRight: spacing.xl,
+  },
   fab: {
     position: "absolute",
     right: spacing.xl,
@@ -255,5 +368,88 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
+  },
+  topSpendingCard: {
+    gap: spacing.lg,
+  },
+  topSpendingHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  topSpendingTitle: {
+    ...typography.body,
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  periodSwitch: {
+    flexDirection: "row",
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+    padding: spacing.xs / 2,
+    gap: spacing.xs,
+  },
+  periodPill: {
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  periodPillActive: {
+    backgroundColor: colors.primary,
+  },
+  periodLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textMuted,
+  },
+  periodLabelActive: {
+    color: colors.text,
+  },
+  topSpendingBody: {
+    gap: spacing.md,
+  },
+  topSpendingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  topSpendingCaption: {
+    ...typography.subtitle,
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 1.4,
+  },
+  topSpendingCategory: {
+    ...typography.body,
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  topSpendingAmount: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.danger,
+  },
+  spendingProgressTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    overflow: "hidden",
+  },
+  spendingProgressFill: {
+    height: "100%",
+    backgroundColor: colors.danger,
+  },
+  spendingSummary: {
+    ...typography.subtitle,
+  },
+  emptyState: {
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+  },
+  emptyStateText: {
+    ...typography.subtitle,
+    textAlign: "center",
   },
 });
