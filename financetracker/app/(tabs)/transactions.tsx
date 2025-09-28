@@ -218,7 +218,7 @@ export default function TransactionsScreen() {
               <View style={styles.summaryStats}>
                 <View style={styles.summaryStat}>
                   <Text style={styles.statLabel}>Opening balance</Text>
-                  <Text style={styles.statValue}>
+                  <Text style={[styles.statValue, styles.openingBalanceValue]}>
                     {formatCurrency(summary.openingBalance, currency || "USD")}
                   </Text>
                 </View>
@@ -340,15 +340,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xxl * 1.5,
-    gap: spacing.xl,
-  },
-  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
     gap: spacing.lg,
   },
+  header: {
+    gap: spacing.md,
+  },
   headingBlock: {
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   title: {
     ...typography.title,
@@ -382,10 +383,10 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     ...typography.label,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   summaryCard: {
-    gap: spacing.lg,
+    gap: spacing.md,
   },
   summaryHeader: {
     flexDirection: "row",
@@ -422,7 +423,7 @@ const styles = StyleSheet.create({
   summaryStats: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.lg,
+    gap: spacing.md,
   },
   summaryStat: {
     flex: 1,
@@ -437,6 +438,10 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 18,
     fontWeight: "700",
+    color: colors.text,
+  },
+  openingBalanceValue: {
+    color: colors.primary,
   },
   reportToggle: {
     flexDirection: "row",
@@ -505,8 +510,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   transactionMain: {
     flexDirection: "row",
@@ -533,7 +538,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   transactionCopy: {
-    gap: spacing.xs,
+    gap: spacing.xs / 2,
     flexShrink: 1,
   },
   transactionNote: {
@@ -558,7 +563,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   separator: {
-    height: spacing.md,
+    height: spacing.xs,
   },
   emptyState: {
     paddingVertical: spacing.xxl,
@@ -573,6 +578,6 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     ...typography.subtitle,
     textAlign: "center",
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
   },
 });

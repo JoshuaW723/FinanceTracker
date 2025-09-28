@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
 
@@ -22,10 +21,9 @@ const formatCurrency = (
   }).format(value);
 
 export default function HomeScreen() {
-  const router = useRouter();
   const transactions = useFinanceStore((state) => state.transactions);
   const profile = useFinanceStore((state) => state.profile);
-  const [spendingPeriod, setSpendingPeriod] = useState<"week" | "month">("week");
+  const [spendingPeriod, setSpendingPeriod] = useState<"week" | "month">("month");
 
   const balance = useMemo(
     () =>
@@ -36,25 +34,35 @@ export default function HomeScreen() {
     [transactions],
   );
 
-  const { incomeThisMonth, expenseThisMonth } = useMemo(() => {
-    const startOfMonth = dayjs().startOf("month");
-    return transactions.reduce(
-      (acc, transaction) => {
-        if (dayjs(transaction.date).isBefore(startOfMonth)) {
+  const startOfMonth = useMemo(() => dayjs().startOf("month"), []);
+  const endOfMonth = useMemo(() => dayjs().endOf("month"), []);
+
+  const summary = useMemo(
+    () =>
+      transactions.reduce(
+        (acc, transaction) => {
+          const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
+          const date = dayjs(transaction.date);
+
+          if (date.isBefore(startOfMonth)) {
+            acc.openingBalance += value;
+          }
+
+          if (!date.isBefore(startOfMonth) && !date.isAfter(endOfMonth)) {
+            if (transaction.type === "income") {
+              acc.income += transaction.amount;
+            } else {
+              acc.expense += transaction.amount;
+            }
+            acc.monthNet += value;
+          }
+
           return acc;
-        }
-
-        if (transaction.type === "income") {
-          acc.incomeThisMonth += transaction.amount;
-        } else {
-          acc.expenseThisMonth += transaction.amount;
-        }
-
-        return acc;
-      },
-      { incomeThisMonth: 0, expenseThisMonth: 0 },
-    );
-  }, [transactions]);
+        },
+        { income: 0, expense: 0, openingBalance: 0, monthNet: 0 },
+      ),
+    [endOfMonth, startOfMonth, transactions],
+  );
 
   const chartData = useMemo(() => {
     const today = dayjs();
@@ -77,20 +85,22 @@ export default function HomeScreen() {
 
   const currency = profile.currency || "USD";
   const formattedBalance = formatCurrency(balance, currency);
-  const formattedIncome = formatCurrency(incomeThisMonth, currency);
-  const formattedExpenses = formatCurrency(expenseThisMonth, currency);
+  const formattedIncome = formatCurrency(summary.income, currency);
+  const formattedExpenses = formatCurrency(summary.expense, currency);
 
-  const netPositive = incomeThisMonth - expenseThisMonth;
-  const netPercentage = incomeThisMonth
-    ? Math.min(100, Math.round((expenseThisMonth / incomeThisMonth) * 100))
-    : 0;
+  const netChangeThisMonth = summary.income - summary.expense;
+  const netIsPositive = netChangeThisMonth >= 0;
+  const netBadgeColor = netIsPositive ? colors.success : colors.danger;
+  const netBadgeBackground = netIsPositive
+    ? "rgba(52,211,153,0.16)"
+    : "rgba(251,113,133,0.16)";
+  const netIcon = netIsPositive ? "trending-up" : "trending-down";
+  const netLabel = `${formatCurrency(netChangeThisMonth, currency, { signDisplay: "always" })} this month`;
 
   const topSpending = useMemo(() => {
     const today = dayjs();
-    const rangeStart =
-      spendingPeriod === "week" ? today.startOf("week") : today.startOf("month");
-    const rangeEnd =
-      spendingPeriod === "week" ? today.endOf("week") : today.endOf("month");
+    const rangeStart = spendingPeriod === "week" ? today.startOf("week") : today.startOf("month");
+    const rangeEnd = spendingPeriod === "week" ? today.endOf("week") : today.endOf("month");
 
     const expenses = transactions.filter((transaction) => {
       if (transaction.type !== "expense") {
@@ -107,43 +117,41 @@ export default function HomeScreen() {
       return acc;
     }, new Map<string, number>());
 
-    let topCategory: { name: string; amount: number } | null = null;
-    totalsByCategory.forEach((amount, name) => {
-      if (!topCategory || amount > topCategory.amount) {
-        topCategory = { name, amount };
-      }
-    });
-
     const totalSpent = expenses.reduce((acc, transaction) => acc + transaction.amount, 0);
 
-    return {
-      category: topCategory?.name ?? null,
-      amount: topCategory?.amount ?? 0,
-      percentage: totalSpent ? Math.round(((topCategory?.amount ?? 0) / totalSpent) * 100) : 0,
-      totalSpent,
-    };
+    const entries = Array.from(totalsByCategory.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([category, amount]) => ({
+        category,
+        amount,
+        percentage: totalSpent ? Math.round((amount / totalSpent) * 100) : 0,
+      }));
+
+    return { entries, totalSpent };
   }, [spendingPeriod, transactions]);
 
-  const netIsPositive = netPositive >= 0;
-  const netBadgeColor = netIsPositive ? colors.success : colors.danger;
-  const netBadgeBackground = netIsPositive
-    ? "rgba(52,211,153,0.12)"
-    : "rgba(251,113,133,0.12)";
-  const netIcon = netIsPositive ? "trending-up" : "trending-down";
-  const netLabel = `${formatCurrency(netPositive, currency, { signDisplay: "always" })} net`;
-
-  const spendingLabel = spendingPeriod === "week" ? "week" : "month";
+  const recentTransactions = useMemo(
+    () =>
+      [...transactions]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 4),
+    [transactions],
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.hello}>Hey {profile.name.split(" ")[0]} 👋</Text>
-          <Text style={styles.subtitle}>Your money dashboard is glowing.</Text>
+          <Text style={styles.hello}>Welcome back, {profile.name.split(" ")[0]}</Text>
+          <Text style={styles.subtitle}>Here’s a tidy look at your money this month.</Text>
         </View>
 
         <View style={[components.card, styles.balanceCard]}>
-          <Text style={styles.balanceLabel}>Current balance</Text>
+          <View style={styles.balanceHeader}>
+            <Text style={styles.balanceLabel}>Total balance</Text>
+            <Ionicons name="eye" size={18} color={colors.textMuted} />
+          </View>
           <Text style={styles.balanceValue}>{formattedBalance}</Text>
           <View style={styles.balanceMetaRow}>
             <View style={[styles.metaBadge, { backgroundColor: netBadgeBackground }]}>
@@ -152,24 +160,32 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.metaCaption}>{dayjs().format("MMMM YYYY")}</Text>
           </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${netPercentage}%` }]} />
-          </View>
-          <View style={styles.progressLabels}>
-            <View>
-              <Text style={styles.label}>Income</Text>
-              <Text style={styles.labelValuePositive}>{formattedIncome}</Text>
+          <View style={styles.balanceBreakdown}>
+            <View style={styles.balanceColumn}>
+              <Text style={styles.breakdownLabel}>Opening balance</Text>
+              <Text style={styles.breakdownValue}>
+                {formatCurrency(summary.openingBalance, currency)}
+              </Text>
             </View>
-            <View>
-              <Text style={styles.label}>Spending</Text>
-              <Text style={styles.labelValueNegative}>{formattedExpenses}</Text>
+            <View style={styles.balanceColumn}>
+              <Text style={styles.breakdownLabel}>Ending balance</Text>
+              <Text style={styles.breakdownValue}>
+                {formatCurrency(summary.openingBalance + summary.monthNet, currency)}
+              </Text>
             </View>
           </View>
+          <Pressable style={styles.reportsLink} accessibilityRole="button">
+            <Text style={styles.reportsText}>View reports</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+          </Pressable>
         </View>
 
-        <View style={[components.surface, styles.topSpendingCard]}>
-          <View style={styles.topSpendingHeader}>
-            <Text style={styles.topSpendingTitle}>Top spending</Text>
+        <View style={[components.surface, styles.monthlyReport]}>
+          <View style={styles.monthlyHeader}>
+            <View>
+              <Text style={styles.monthlyTitle}>This month</Text>
+              <Text style={styles.monthlyCaption}>Income vs spending</Text>
+            </View>
             <View style={styles.periodSwitch}>
               {["week", "month"].map((period) => {
                 const active = spendingPeriod === period;
@@ -182,46 +198,22 @@ export default function HomeScreen() {
                     accessibilityState={{ selected: active }}
                   >
                     <Text style={[styles.periodLabel, active && styles.periodLabelActive]}>
-                      {period === "week" ? "This week" : "This month"}
+                      {period === "week" ? "Week" : "Month"}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
           </View>
-
-          {topSpending.category ? (
-            <View style={styles.topSpendingBody}>
-              <View style={styles.topSpendingRow}>
-                <View>
-                  <Text style={styles.topSpendingCaption}>Highest category</Text>
-                  <Text style={styles.topSpendingCategory}>{topSpending.category}</Text>
-                </View>
-                <Text style={styles.topSpendingAmount}>
-                  {formatCurrency(topSpending.amount, currency)}
-                </Text>
-              </View>
-              <View style={styles.spendingProgressTrack}>
-                <View style={[styles.spendingProgressFill, { width: `${topSpending.percentage}%` }]} />
-              </View>
-              <Text style={styles.spendingSummary}>
-                {topSpending.percentage}% of your spending this {spendingLabel}
-              </Text>
+          <View style={styles.reportTotals}>
+            <View>
+              <Text style={styles.reportLabel}>Total spent</Text>
+              <Text style={[styles.reportValue, styles.reportValueNegative]}>{formattedExpenses}</Text>
             </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="leaf-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.emptyStateText}>
-                No expenses tracked for this {spendingLabel} yet.
-              </Text>
+            <View>
+              <Text style={styles.reportLabel}>Total income</Text>
+              <Text style={[styles.reportValue, styles.reportValuePositive]}>{formattedIncome}</Text>
             </View>
-          )}
-        </View>
-
-        <View style={[components.surface, styles.chartCard]}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>7-day cash flow</Text>
-            <Text style={styles.chartCaption}>Income vs. spend</Text>
           </View>
           <ScrollView
             horizontal
@@ -231,11 +223,91 @@ export default function HomeScreen() {
             <MiniBarChart data={chartData} style={styles.chart} />
           </ScrollView>
         </View>
-      </ScrollView>
 
-      <Pressable accessibilityRole="button" style={styles.fab} onPress={() => router.push("/transactions/new")}>
-        <Ionicons name="add" size={28} color={colors.text} />
-      </Pressable>
+        <View style={[components.surface, styles.topSpendingCard]}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Top spending</Text>
+            <Text style={styles.sectionCaption}>
+              {topSpending.totalSpent
+                ? formatCurrency(topSpending.totalSpent, currency)
+                : "No spend"}
+            </Text>
+          </View>
+          {topSpending.entries.length ? (
+            <View style={styles.topSpendingList}>
+              {topSpending.entries.map((entry) => (
+                <View key={entry.category} style={styles.topSpendingItem}>
+                  <View style={styles.topSpendingItemHeader}>
+                    <Text style={styles.topSpendingName}>{entry.category}</Text>
+                    <Text style={styles.topSpendingAmount}>
+                      {formatCurrency(entry.amount, currency)}
+                    </Text>
+                  </View>
+                  <View style={styles.spendingProgressTrack}>
+                    <View
+                      style={[
+                        styles.spendingProgressFill,
+                        { width: `${Math.min(100, entry.percentage)}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.spendingPercentage}>{entry.percentage}% of spend</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="leaf-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.emptyStateText}>Track a few expenses to see insights.</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={[components.surface, styles.recentCard]}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Recent transactions</Text>
+            <Text style={styles.sectionCaption}>Last {recentTransactions.length || 0}</Text>
+          </View>
+          {recentTransactions.length ? (
+            <View style={styles.recentList}>
+              {recentTransactions.map((transaction) => (
+                <View key={transaction.id} style={styles.recentRow}>
+                  <View
+                    style={[
+                      styles.recentAvatar,
+                      transaction.type === "income" ? styles.avatarIncome : styles.avatarExpense,
+                    ]}
+                  >
+                    <Text style={styles.avatarText}>{transaction.category.charAt(0)}</Text>
+                  </View>
+                  <View style={styles.recentCopy}>
+                    <Text style={styles.recentNote}>{transaction.note}</Text>
+                    <Text style={styles.recentMeta}>
+                      {dayjs(transaction.date).format("ddd, D MMM")} • {transaction.category}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.recentAmount,
+                      transaction.type === "income"
+                        ? styles.reportValuePositive
+                        : styles.reportValueNegative,
+                    ]}
+                  >
+                    {transaction.type === "income" ? "+" : "-"}
+                    {formatCurrency(transaction.amount, currency)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="documents-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.emptyStateText}>No transactions logged yet.</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -246,28 +318,39 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.xl,
-    paddingBottom: 140,
-    gap: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.lg,
   },
   header: {
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   hello: {
     ...typography.title,
+    fontSize: 24,
   },
   subtitle: {
     ...typography.subtitle,
+    fontSize: 14,
   },
   balanceCard: {
-    gap: spacing.lg,
+    gap: spacing.md,
+  },
+  balanceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   balanceLabel: {
-    ...typography.label,
+    fontSize: 14,
+    fontWeight: "600",
     color: colors.textMuted,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
   balanceValue: {
-    fontSize: 44,
+    fontSize: 40,
     fontWeight: "700",
     color: colors.text,
     letterSpacing: -0.4,
@@ -280,113 +363,77 @@ const styles = StyleSheet.create({
   metaBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: 999,
   },
   metaText: {
     fontSize: 13,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   metaCaption: {
     fontSize: 13,
     color: colors.textMuted,
     fontWeight: "500",
   },
-  progressTrack: {
-    width: "100%",
-    height: 8,
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: colors.primary,
-    borderRadius: 999,
-  },
-  progressLabels: {
+  balanceBreakdown: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.lg,
   },
-  label: {
-    ...typography.subtitle,
+  balanceColumn: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  breakdownLabel: {
     fontSize: 12,
-    letterSpacing: 1.2,
+    color: colors.textMuted,
+    fontWeight: "600",
+    letterSpacing: 0.6,
     textTransform: "uppercase",
   },
-  labelValuePositive: {
+  breakdownValue: {
     fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  reportsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  reportsText: {
+    color: colors.primary,
     fontWeight: "600",
-    color: colors.success,
-    marginTop: 4,
   },
-  labelValueNegative: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.danger,
-    marginTop: 4,
+  monthlyReport: {
+    gap: spacing.md,
   },
-  chartCard: {
-    gap: spacing.lg,
-  },
-  chartHeader: {
+  monthlyHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  chartTitle: {
-    ...typography.body,
+  monthlyTitle: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: colors.text,
   },
-  chartCaption: {
+  monthlyCaption: {
     ...typography.subtitle,
-  },
-  chart: {
-    paddingVertical: spacing.md,
-  },
-  chartContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingRight: spacing.xl,
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.xl,
-    bottom: spacing.xl * 1.2,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.primary,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  topSpendingCard: {
-    gap: spacing.lg,
-  },
-  topSpendingHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  topSpendingTitle: {
-    ...typography.body,
-    fontSize: 18,
-    fontWeight: "600",
   },
   periodSwitch: {
     flexDirection: "row",
     backgroundColor: colors.surface,
     borderRadius: 999,
-    padding: spacing.xs / 2,
+    padding: spacing.xs,
     gap: spacing.xs,
   },
   periodPill: {
@@ -405,33 +452,75 @@ const styles = StyleSheet.create({
   periodLabelActive: {
     color: colors.text,
   },
-  topSpendingBody: {
-    gap: spacing.md,
-  },
-  topSpendingRow: {
+  reportTotals: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
   },
-  topSpendingCaption: {
-    ...typography.subtitle,
-    fontSize: 12,
+  reportLabel: {
+    fontSize: 13,
+    color: colors.textMuted,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
-    letterSpacing: 1.4,
   },
-  topSpendingCategory: {
-    ...typography.body,
-    fontSize: 20,
+  reportValue: {
+    fontSize: 22,
     fontWeight: "700",
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
-  topSpendingAmount: {
-    fontSize: 20,
-    fontWeight: "700",
+  reportValuePositive: {
+    color: colors.success,
+  },
+  reportValueNegative: {
     color: colors.danger,
   },
+  chartContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingRight: spacing.md,
+  },
+  chart: {
+    paddingVertical: spacing.sm,
+  },
+  topSpendingCard: {
+    gap: spacing.md,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  sectionCaption: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  topSpendingList: {
+    gap: spacing.md,
+  },
+  topSpendingItem: {
+    gap: spacing.xs,
+  },
+  topSpendingItemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  topSpendingName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  topSpendingAmount: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.text,
+  },
   spendingProgressTrack: {
-    height: 8,
+    height: 6,
     borderRadius: 999,
     backgroundColor: colors.surface,
     overflow: "hidden",
@@ -440,8 +529,55 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: colors.danger,
   },
-  spendingSummary: {
-    ...typography.subtitle,
+  spendingPercentage: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  recentCard: {
+    gap: spacing.md,
+  },
+  recentList: {
+    gap: spacing.md,
+  },
+  recentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  recentAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarIncome: {
+    backgroundColor: "rgba(52,211,153,0.16)",
+  },
+  avatarExpense: {
+    backgroundColor: "rgba(251,113,133,0.16)",
+  },
+  avatarText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  recentCopy: {
+    flex: 1,
+    gap: spacing.xs / 2,
+  },
+  recentNote: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  recentMeta: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  recentAmount: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   emptyState: {
     alignItems: "center",
