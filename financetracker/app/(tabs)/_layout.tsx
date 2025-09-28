@@ -20,7 +20,7 @@ function AddTransactionTabButton({ style, ...props }: BottomTabBarButtonProps) {
       accessibilityState={{ selected: false }}
     >
       <View style={styles.addButtonIconWrapper}>
-        <Ionicons name="add" size={22} color={colors.text} />
+        <Ionicons name="add" size={22} color={colors.background} />
       </View>
       <Text style={styles.addButtonLabel}>Add</Text>
     </Pressable>
@@ -40,15 +40,15 @@ export default function TabsLayout() {
           borderTopWidth: 0,
           elevation: 0,
           shadowOpacity: 0,
-          height: Platform.select({ ios: 80, default: 64 }),
-          paddingHorizontal: 16,
-          paddingTop: 10,
-          paddingBottom: Platform.select({ ios: 20, default: 12 }),
+          height: Platform.select({ ios: 72, default: 60 }),
+          paddingHorizontal: 20,
+          paddingTop: 6,
+          paddingBottom: Platform.select({ ios: 16, default: 10 }),
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: "600",
-          letterSpacing: 0.5,
+          letterSpacing: 0.4,
         },
       }}
     >
@@ -110,14 +110,14 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   addButtonIconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primary,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.success,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: colors.primary,
-    shadowOpacity: Platform.OS === "ios" ? 0.4 : 0.2,
+    shadowColor: colors.success,
+    shadowOpacity: Platform.OS === "ios" ? 0.35 : 0.18,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   addButtonLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: colors.text,
+    color: colors.textMuted,
     letterSpacing: 0.4,
   },
 });
