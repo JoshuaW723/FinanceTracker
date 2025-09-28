@@ -218,7 +218,7 @@ export default function TransactionsScreen() {
               <View style={styles.summaryStats}>
                 <View style={styles.summaryStat}>
                   <Text style={styles.statLabel}>Opening balance</Text>
-                  <Text style={styles.statValue}>
+                  <Text style={[styles.statValue, styles.openingBalanceValue]}>
                     {formatCurrency(summary.openingBalance, currency || "USD")}
                   </Text>
                 </View>
@@ -340,9 +340,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xxl * 1.5,
-    gap: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
+    gap: spacing.lg,
   },
   header: {
     gap: spacing.lg,
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     ...typography.label,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   summaryCard: {
     gap: spacing.lg,
@@ -437,6 +437,10 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 18,
     fontWeight: "700",
+    color: colors.text,
+  },
+  openingBalanceValue: {
+    color: colors.accent,
   },
   reportToggle: {
     flexDirection: "row",
@@ -505,8 +509,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   transactionMain: {
     flexDirection: "row",
@@ -558,7 +562,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   separator: {
-    height: spacing.md,
+    height: spacing.sm,
   },
   emptyState: {
     paddingVertical: spacing.xxl,

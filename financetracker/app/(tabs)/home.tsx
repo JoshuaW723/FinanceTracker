@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
 
@@ -22,7 +21,6 @@ const formatCurrency = (
   }).format(value);
 
 export default function HomeScreen() {
-  const router = useRouter();
   const transactions = useFinanceStore((state) => state.transactions);
   const profile = useFinanceStore((state) => state.profile);
   const [spendingPeriod, setSpendingPeriod] = useState<"week" | "month">("week");
@@ -134,6 +132,52 @@ export default function HomeScreen() {
 
   const spendingLabel = spendingPeriod === "week" ? "week" : "month";
 
+  const snapshot = useMemo(() => {
+    const today = dayjs();
+    const startOfMonth = today.startOf("month");
+    const daysElapsed = Math.max(1, today.diff(startOfMonth, "day") + 1);
+
+    const thisMonthTransactions = transactions.filter((transaction) =>
+      dayjs(transaction.date).isSame(today, "month"),
+    );
+
+    const expenseTotal = thisMonthTransactions
+      .filter((transaction) => transaction.type === "expense")
+      .reduce((acc, transaction) => acc + transaction.amount, 0);
+
+    const averageDailySpend = expenseTotal / daysElapsed;
+
+    const savingsRate = incomeThisMonth
+      ? Math.round(((incomeThisMonth - expenseThisMonth) / incomeThisMonth) * 100)
+      : 0;
+
+    const largestExpense = thisMonthTransactions
+      .filter((transaction) => transaction.type === "expense")
+      .reduce<{
+        amount: number;
+        label: string | null;
+      }>(
+        (acc, transaction) => {
+          if (transaction.amount > acc.amount) {
+            return { amount: transaction.amount, label: transaction.category };
+          }
+          return acc;
+        },
+        { amount: 0, label: null },
+      );
+
+    const runwayDays = averageDailySpend > 0 ? Math.floor(Math.max(0, balance) / averageDailySpend) : null;
+
+    return {
+      averageDailySpend,
+      savingsRate,
+      largestExpense,
+      runwayDays,
+      transactionCount: thisMonthTransactions.length,
+      reportingThrough: today.format("MMM D"),
+    };
+  }, [balance, expenseThisMonth, incomeThisMonth, transactions]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -218,6 +262,52 @@ export default function HomeScreen() {
           )}
         </View>
 
+        <View style={[components.surface, styles.snapshotCard]}>
+          <View style={styles.snapshotHeader}>
+            <Text style={styles.snapshotTitle}>Monthly snapshot</Text>
+            <Text style={styles.snapshotSubtitle}>Up to {snapshot.reportingThrough}</Text>
+          </View>
+          <View style={styles.snapshotGrid}>
+            <View style={styles.snapshotStat}>
+              <Text style={styles.snapshotLabel}>Avg daily spend</Text>
+              <Text style={[styles.snapshotValue, styles.snapshotValueNegative]}>
+                {formatCurrency(snapshot.averageDailySpend || 0, currency, { maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+            <View style={styles.snapshotStat}>
+              <Text style={styles.snapshotLabel}>Savings rate</Text>
+              <Text
+                style={[
+                  styles.snapshotValue,
+                  snapshot.savingsRate >= 0 ? styles.snapshotValuePositive : styles.snapshotValueNegative,
+                ]}
+              >
+                {snapshot.savingsRate}%
+              </Text>
+            </View>
+            <View style={styles.snapshotStat}>
+              <Text style={styles.snapshotLabel}>Transactions logged</Text>
+              <Text style={styles.snapshotValue}>{snapshot.transactionCount}</Text>
+            </View>
+            <View style={styles.snapshotStat}>
+              <Text style={styles.snapshotLabel}>Cash runway</Text>
+              <Text style={styles.snapshotValue}>
+                {snapshot.runwayDays !== null ? `${snapshot.runwayDays} days` : "—"}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.snapshotFooter}>
+            <Text style={styles.snapshotLabel}>Largest expense this month</Text>
+            {snapshot.largestExpense.label ? (
+              <Text style={[styles.snapshotValue, styles.snapshotValueNegative]}>
+                {snapshot.largestExpense.label} · {formatCurrency(snapshot.largestExpense.amount, currency)}
+              </Text>
+            ) : (
+              <Text style={styles.snapshotValue}>No expenses logged yet</Text>
+            )}
+          </View>
+        </View>
+
         <View style={[components.surface, styles.chartCard]}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>7-day cash flow</Text>
@@ -233,9 +323,6 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      <Pressable accessibilityRole="button" style={styles.fab} onPress={() => router.push("/transactions/new")}>
-        <Ionicons name="add" size={28} color={colors.text} />
-      </Pressable>
     </SafeAreaView>
   );
 }
@@ -246,9 +333,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.xl,
-    paddingBottom: 140,
-    gap: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
+    gap: spacing.lg,
   },
   header: {
     gap: spacing.sm,
@@ -351,23 +439,7 @@ const styles = StyleSheet.create({
   chartContent: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingRight: spacing.xl,
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.xl,
-    bottom: spacing.xl * 1.2,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.primary,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    paddingRight: spacing.lg,
   },
   topSpendingCard: {
     gap: spacing.lg,
@@ -404,6 +476,52 @@ const styles = StyleSheet.create({
   },
   periodLabelActive: {
     color: colors.text,
+  },
+  snapshotCard: {
+    gap: spacing.lg,
+  },
+  snapshotHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  snapshotTitle: {
+    ...typography.body,
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  snapshotSubtitle: {
+    ...typography.subtitle,
+  },
+  snapshotGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.lg,
+  },
+  snapshotStat: {
+    width: "47%",
+    gap: spacing.xs,
+  },
+  snapshotLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textMuted,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  snapshotValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  snapshotValuePositive: {
+    color: colors.success,
+  },
+  snapshotValueNegative: {
+    color: colors.danger,
+  },
+  snapshotFooter: {
+    gap: spacing.xs,
   },
   topSpendingBody: {
     gap: spacing.md,
