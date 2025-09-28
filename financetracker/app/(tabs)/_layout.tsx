@@ -74,7 +74,6 @@ export default function TabsLayout() {
         name="add-transaction"
         options={{
           title: "Add",
-          href: null,
           tabBarButton: (props) => <AddTransactionTabButton {...props} />,
         }}
       />
