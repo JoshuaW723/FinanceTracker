@@ -1,7 +1,8 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlatList, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
-import { colors, components, spacing, typography } from "../../theme";
+import { useAppTheme } from "../../theme";
 
 const mockLeaders = [
   { id: "1", name: "Avery Rivera", progress: "Spark Balance +18%" },
@@ -10,6 +11,9 @@ const mockLeaders = [
 ];
 
 export default function LeaderboardScreen() {
+  const theme = useAppTheme();
+  const styles = createStyles(theme);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -22,9 +26,9 @@ export default function LeaderboardScreen() {
         data={mockLeaders}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={{ height: spacing.lg }} />}
+        ItemSeparatorComponent={() => <View style={{ height: theme.spacing.lg }} />}
         renderItem={({ item, index }) => (
-          <View style={[components.surface, styles.card]}>
+          <View style={[theme.components.surface, styles.card]}>
             <View style={styles.rankBadge}>
               <Text style={styles.rankText}>{index + 1}</Text>
             </View>
@@ -32,6 +36,7 @@ export default function LeaderboardScreen() {
               <Text style={styles.leaderName}>{item.name}</Text>
               <Text style={styles.leaderMeta}>{item.progress}</Text>
             </View>
+            <Ionicons name="sparkles" size={18} color={theme.colors.accent} />
           </View>
         )}
       />
@@ -39,56 +44,58 @@ export default function LeaderboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: spacing.xl,
-  },
-  header: {
-    gap: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  title: {
-    ...typography.title,
-  },
-  subtitle: {
-    ...typography.subtitle,
-  },
-  listContent: {
-    paddingBottom: spacing.xxl * 1.5,
-  },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    gap: spacing.lg,
-  },
-  rankBadge: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rankText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  leaderInfo: {
-    gap: 4,
-    flex: 1,
-  },
-  leaderName: {
-    ...typography.body,
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  leaderMeta: {
-    ...typography.subtitle,
-    fontSize: 14,
-  },
-});
+const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+      padding: theme.spacing.xl,
+    },
+    header: {
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.xl,
+    },
+    title: {
+      ...theme.typography.title,
+    },
+    subtitle: {
+      ...theme.typography.subtitle,
+    },
+    listContent: {
+      paddingBottom: theme.spacing.xxl * 1.5,
+      gap: theme.spacing.lg,
+    },
+    card: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.lg,
+      gap: theme.spacing.lg,
+    },
+    rankBadge: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: theme.colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    rankText: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    leaderInfo: {
+      gap: 4,
+      flex: 1,
+    },
+    leaderName: {
+      ...theme.typography.body,
+      fontSize: 18,
+      fontWeight: "600",
+    },
+    leaderMeta: {
+      ...theme.typography.subtitle,
+      fontSize: 14,
+    },
+  });
