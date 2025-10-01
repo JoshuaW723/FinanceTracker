@@ -1,17 +1,22 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
-import { colors } from "../theme";
+import { useAppTheme } from "../theme";
+import { useFinanceStore } from "../lib/store";
 
 export default function RootLayout() {
+  const theme = useAppTheme();
+  const themeMode = useFinanceStore((state) => state.preferences.themeMode);
+  const statusBarStyle = themeMode === "light" ? "dark" : "light";
+
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style={statusBarStyle} />
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: {
-            backgroundColor: colors.background,
+            backgroundColor: theme.colors.background,
           },
         }}
       >

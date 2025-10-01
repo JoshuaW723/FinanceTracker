@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -16,35 +16,35 @@ import { useRouter } from "expo-router";
 import dayjs from "dayjs";
 import { Ionicons } from "@expo/vector-icons";
 
-import { colors, components, spacing, typography } from "../../theme";
+import { useAppTheme } from "../../theme";
 import { TransactionType, useFinanceStore } from "../../lib/store";
 
-const categories = [
-  "Food",
-  "Travel",
-  "Lifestyle",
-  "Work",
-  "Salary",
-  "Investing",
-];
-
 export default function NewTransactionModal() {
+  const theme = useAppTheme();
   const router = useRouter();
   const addTransaction = useFinanceStore((state) => state.addTransaction);
   const currency = useFinanceStore((state) => state.profile.currency);
+  const categories = useFinanceStore((state) => state.preferences.categories);
 
   const [type, setType] = useState<TransactionType>("expense");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  const [category, setCategory] = useState(categories[0]);
+  const [category, setCategory] = useState(() => categories[0] ?? "");
   const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(Platform.OS === "ios");
+
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const handleSubmit = () => {
     const parsedAmount = Number(amount);
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("Hold up", "Enter a positive amount to continue.");
+      return;
+    }
+
+    if (!category) {
+      Alert.alert("Heads up", "Please choose a category for this transaction.");
       return;
     }
 
@@ -68,7 +68,7 @@ export default function NewTransactionModal() {
       >
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.closeButton}>
-            <Ionicons name="chevron-down" size={24} color={colors.text} />
+            <Ionicons name="chevron-down" size={24} color={theme.colors.text} />
           </Pressable>
           <Text style={styles.title}>Add transaction</Text>
           <View style={{ width: 32 }} />
@@ -88,9 +88,7 @@ export default function NewTransactionModal() {
                   onPress={() => setType(value as TransactionType)}
                   style={[styles.toggleChip, isActive && styles.toggleChipActive]}
                 >
-                  <Text
-                    style={[styles.toggleText, isActive && styles.toggleTextActive]}
-                  >
+                  <Text style={[styles.toggleText, isActive && styles.toggleTextActive]}>
                     {value === "expense" ? "Expense" : "Income"}
                   </Text>
                 </Pressable>
@@ -105,8 +103,8 @@ export default function NewTransactionModal() {
               onChangeText={setAmount}
               keyboardType="decimal-pad"
               placeholder="0.00"
-              placeholderTextColor={colors.textMuted}
-              style={[components.input, styles.input]}
+              placeholderTextColor={theme.colors.textMuted}
+              style={styles.input}
             />
           </View>
 
@@ -116,8 +114,8 @@ export default function NewTransactionModal() {
               value={note}
               onChangeText={setNote}
               placeholder="Add a short note"
-              placeholderTextColor={colors.textMuted}
-              style={[components.input, styles.input]}
+              placeholderTextColor={theme.colors.textMuted}
+              style={styles.input}
             />
           </View>
 
@@ -133,9 +131,7 @@ export default function NewTransactionModal() {
                       onPress={() => setCategory(item)}
                       style={[styles.categoryChip, isActive && styles.categoryChipActive]}
                     >
-                      <Text
-                        style={[styles.categoryChipText, isActive && styles.categoryChipTextActive]}
-                      >
+                      <Text style={[styles.categoryChipText, isActive && styles.categoryChipTextActive]}>
                         {item}
                       </Text>
                     </Pressable>
@@ -148,11 +144,11 @@ export default function NewTransactionModal() {
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Date</Text>
             <Pressable
-              style={[components.input, styles.input, styles.dateButton]}
+              style={[styles.input, styles.dateButton]}
               onPress={() => setShowPicker((prev) => !prev)}
             >
               <Text style={styles.dateText}>{dayjs(date).format("MMM D, YYYY")}</Text>
-              <Ionicons name="calendar" size={20} color={colors.textMuted} />
+              <Ionicons name="calendar" size={20} color={theme.colors.textMuted} />
             </Pressable>
             {showPicker && (
               <DateTimePicker
@@ -172,107 +168,120 @@ export default function NewTransactionModal() {
           </View>
         </ScrollView>
 
-        <Pressable
-          style={[components.buttonPrimary, styles.submitButton]}
-          onPress={handleSubmit}
-        >
-          <Text style={components.buttonPrimaryText}>Add transaction</Text>
+        <Pressable style={styles.submitButton} onPress={handleSubmit}>
+          <Text style={styles.submitButtonText}>Add transaction</Text>
         </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    ...typography.body,
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  content: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xxl,
-    gap: spacing.xl,
-  },
-  toggleRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  toggleChip: {
-    ...components.chip,
-  },
-  toggleChipActive: {
-    backgroundColor: colors.primary,
-  },
-  toggleText: {
-    color: colors.textMuted,
-    fontWeight: "600",
-  },
-  toggleTextActive: {
-    color: colors.text,
-  },
-  fieldGroup: {
-    gap: spacing.sm,
-  },
-  label: {
-    ...typography.subtitle,
-    fontSize: 13,
-    textTransform: "uppercase",
-    letterSpacing: 1.2,
-  },
-  input: {
-    fontSize: 16,
-  },
-  categoryRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  categoryChip: {
-    ...components.chip,
-  },
-  categoryChipActive: {
-    backgroundColor: colors.primary,
-  },
-  categoryChipText: {
-    color: colors.textMuted,
-    fontWeight: "600",
-  },
-  categoryChipTextActive: {
-    color: colors.text,
-  },
-  dateButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  dateText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  submitButton: {
-    margin: spacing.xl,
-  },
-});
+const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    flex: {
+      flex: 1,
+    },
+    header: {
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.lg,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    closeButton: {
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: theme.radii.md,
+      backgroundColor: theme.colors.surface,
+    },
+    title: {
+      ...theme.typography.title,
+      fontSize: 22,
+    },
+    content: {
+      paddingHorizontal: theme.spacing.xl,
+      paddingBottom: theme.spacing.xl,
+      gap: theme.spacing.lg,
+    },
+    toggleRow: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    toggleChip: {
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    toggleChipActive: {
+      backgroundColor: theme.colors.primary,
+      borderColor: theme.colors.primary,
+    },
+    toggleText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+      textTransform: "capitalize",
+    },
+    toggleTextActive: {
+      color: theme.colors.text,
+    },
+    fieldGroup: {
+      gap: theme.spacing.sm,
+    },
+    label: {
+      ...theme.typography.subtitle,
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 1.2,
+    },
+    input: {
+      ...theme.components.input,
+      fontSize: 16,
+    },
+    categoryRow: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    categoryChip: {
+      ...theme.components.chip,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    categoryChipActive: {
+      backgroundColor: theme.colors.primary,
+      borderColor: theme.colors.primary,
+    },
+    categoryChipText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+    },
+    categoryChipTextActive: {
+      color: theme.colors.text,
+    },
+    dateButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    dateText: {
+      color: theme.colors.text,
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    submitButton: {
+      ...theme.components.buttonPrimary,
+      margin: theme.spacing.xl,
+    },
+    submitButtonText: {
+      ...theme.components.buttonPrimaryText,
+    },
+  });

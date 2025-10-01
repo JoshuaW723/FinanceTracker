@@ -1,4 +1,39 @@
-export const colors = {
+import { useMemo } from "react";
+import { StyleSheet } from "react-native";
+
+import { ThemeMode, useFinanceStore } from "./lib/store";
+
+type Colors = {
+  background: string;
+  surface: string;
+  surfaceElevated: string;
+  primary: string;
+  primaryMuted: string;
+  accent: string;
+  text: string;
+  textMuted: string;
+  success: string;
+  danger: string;
+  border: string;
+};
+
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
+} as const;
+
+export const radii = {
+  sm: 8,
+  md: 16,
+  lg: 24,
+  pill: 999,
+} as const;
+
+const darkColors: Colors = {
   background: "#050608",
   surface: "#10121B",
   surfaceElevated: "#161A26",
@@ -12,23 +47,21 @@ export const colors = {
   border: "#1F2937",
 };
 
-export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 32,
+const lightColors: Colors = {
+  background: "#F8FAFF",
+  surface: "#FFFFFF",
+  surfaceElevated: "#EEF3FF",
+  primary: "#2563EB",
+  primaryMuted: "#1D4ED8",
+  accent: "#60A5FA",
+  text: "#0F172A",
+  textMuted: "#475569",
+  success: "#047857",
+  danger: "#B91C1C",
+  border: "#CBD5F5",
 };
 
-export const radii = {
-  sm: 8,
-  md: 16,
-  lg: 24,
-  pill: 999,
-};
-
-export const typography = {
+const buildTypography = (colors: Colors) => ({
   title: {
     fontSize: 28,
     fontWeight: "700" as const,
@@ -54,9 +87,9 @@ export const typography = {
     textTransform: "uppercase" as const,
     letterSpacing: 1.8,
   },
-};
+});
 
-export const components = {
+const buildComponents = (colors: Colors) => ({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -94,14 +127,36 @@ export const components = {
     paddingVertical: spacing.sm,
     backgroundColor: colors.surface,
   },
+});
+
+const buildTheme = (mode: ThemeMode) => {
+  const colors = mode === "light" ? lightColors : darkColors;
+  return {
+    colors,
+    spacing,
+    radii,
+    typography: buildTypography(colors),
+    components: buildComponents(colors),
+  } as const;
 };
 
-export const theme = {
-  colors,
-  spacing,
-  radii,
-  typography,
-  components,
+const themeMap = {
+  light: buildTheme("light"),
+  dark: buildTheme("dark"),
+} as const satisfies Record<ThemeMode, ReturnType<typeof buildTheme>>;
+
+export type Theme = (typeof themeMap)[keyof typeof themeMap];
+
+export const useAppTheme = (): Theme => {
+  const mode = useFinanceStore((state) => state.preferences.themeMode);
+  return useMemo(() => themeMap[mode], [mode]);
 };
 
-export type Theme = typeof theme;
+export const useThemedStyles = <T extends StyleSheet.NamedStyles<T> | StyleSheet.NamedStyles<any>>(
+  factory: (theme: Theme) => T,
+): T => {
+  const theme = useAppTheme();
+  return useMemo(() => StyleSheet.create(factory(theme)), [factory, theme]);
+};
+
+export const getThemeForMode = (mode: ThemeMode): Theme => themeMap[mode];
