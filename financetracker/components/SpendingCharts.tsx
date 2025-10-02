@@ -160,6 +160,29 @@ const SpendingLineChartComponent = ({
     activeIndex !== null ? comparisonPoints[activeIndex] : undefined;
   const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
   const format = formatValue ?? ((value: number) => `${value}`);
+  const [tooltipSize, setTooltipSize] = useState<{ width: number; height: number } | null>(null);
+
+  const tooltipPosition = useMemo(() => {
+    if (!activePoint) {
+      return null;
+    }
+
+    const width = tooltipSize?.width ?? 140;
+    const height = tooltipSize?.height ?? 72;
+    const margin = 12;
+    const proposedTop = activePoint.y - height - margin;
+    const clampedTop = Math.max(margin, proposedTop);
+    const needsBelow = proposedTop < margin;
+    const top = needsBelow
+      ? Math.min(CHART_HEIGHT - height - margin, activePoint.y + margin)
+      : clampedTop;
+    const left = Math.min(
+      chartWidth - margin - width,
+      Math.max(margin, activePoint.x - width / 2),
+    );
+
+    return { top, left };
+  }, [activePoint, chartWidth, tooltipSize]);
 
   const updateActiveIndexFromX = useCallback(
     (x: number | undefined) => {
@@ -212,7 +235,7 @@ const SpendingLineChartComponent = ({
       onTouchEnd={handleRelease}
       onTouchCancel={handleRelease}
     >
-      {activePoint ? (
+      {activePoint && tooltipPosition ? (
         <View
           pointerEvents="none"
           style={[
@@ -220,8 +243,16 @@ const SpendingLineChartComponent = ({
             {
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
+              top: tooltipPosition.top,
+              left: tooltipPosition.left,
             },
           ]}
+          onLayout={(event) =>
+            setTooltipSize({
+              width: event.nativeEvent.layout.width,
+              height: event.nativeEvent.layout.height,
+            })
+          }
         >
           <Text style={[styles.tooltipTitle, { color: theme.colors.text }]}>Day {activeLabel}</Text>
           <Text style={[styles.tooltipValue, { color: theme.colors.primary }]}>{format(activePoint.value)}</Text>
@@ -442,6 +473,30 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
 
   const activePoint = activeIndex !== null ? bars[activeIndex] : undefined;
   const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
+  const [tooltipSize, setTooltipSize] = useState<{ width: number; height: number } | null>(null);
+
+  const tooltipPosition = useMemo(() => {
+    if (!activePoint) {
+      return null;
+    }
+
+    const width = tooltipSize?.width ?? 140;
+    const height = tooltipSize?.height ?? 64;
+    const margin = 12;
+    const barCenterX = activePoint.x + activePoint.width / 2;
+    const proposedTop = activePoint.y - height - margin;
+    const clampedTop = Math.max(margin, proposedTop);
+    const needsBelow = proposedTop < margin;
+    const top = needsBelow
+      ? Math.min(CHART_HEIGHT - height - margin, activePoint.y + activePoint.height + margin)
+      : clampedTop;
+    const left = Math.min(
+      chartWidth - margin - width,
+      Math.max(margin, barCenterX - width / 2),
+    );
+
+    return { top, left };
+  }, [activePoint, chartWidth, tooltipSize]);
 
   const updateActiveIndexFromX = useCallback(
     (x: number | undefined) => {
@@ -499,7 +554,7 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
       onTouchEnd={handleRelease}
       onTouchCancel={handleRelease}
     >
-      {activePoint ? (
+      {activePoint && tooltipPosition ? (
         <View
           pointerEvents="none"
           style={[
@@ -507,8 +562,16 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
             {
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
+              top: tooltipPosition.top,
+              left: tooltipPosition.left,
             },
           ]}
+          onLayout={(event) =>
+            setTooltipSize({
+              width: event.nativeEvent.layout.width,
+              height: event.nativeEvent.layout.height,
+            })
+          }
         >
           <Text style={[styles.tooltipTitle, { color: theme.colors.text }]}>Spending</Text>
           <Text style={[styles.tooltipValue, { color: theme.colors.primary }]}>
@@ -559,8 +622,6 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
 const styles = StyleSheet.create({
   tooltip: {
     position: "absolute",
-    top: 8,
-    right: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
