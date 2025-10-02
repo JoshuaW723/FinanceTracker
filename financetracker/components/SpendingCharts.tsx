@@ -487,12 +487,10 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
     const height = tooltipSize?.height ?? 64;
     const margin = 12;
     const barCenterX = activePoint.x + activePoint.width / 2;
+    const desiredAnchorY = activePoint.y + activePoint.height * 0.15;
     const anchorY = Math.max(
       VERTICAL_PADDING,
-      Math.min(
-        CHART_HEIGHT - VERTICAL_PADDING,
-        activePoint.y + Math.min(activePoint.height / 2, 48),
-      ),
+      Math.min(CHART_HEIGHT - VERTICAL_PADDING, desiredAnchorY),
     );
     const proposedTop = anchorY - height / 2;
     const top = Math.min(
