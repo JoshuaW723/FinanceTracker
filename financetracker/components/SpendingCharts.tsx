@@ -1,5 +1,12 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useState } from "react";
-import { LayoutChangeEvent, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  GestureResponderEvent,
+  LayoutChangeEvent,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from "react-native";
 import Svg, {
   Circle,
   Defs,
@@ -21,11 +28,12 @@ export interface SpendingPoint {
 interface SpendingChartProps {
   data: SpendingPoint[];
   style?: ViewStyle;
+  formatValue?: (value: number) => string;
+  onActiveChange?: (point: SpendingPoint | null) => void;
 }
 
 interface SpendingLineChartProps extends SpendingChartProps {
   comparison?: SpendingPoint[];
-  formatValue?: (value: number) => string;
 }
 
 const CHART_HEIGHT = 200;
@@ -33,6 +41,7 @@ const MIN_CHART_WIDTH = 320;
 const VERTICAL_PADDING = 32;
 const HORIZONTAL_PADDING = 24;
 const GRID_LINE_COUNT = 4;
+const BAR_TOOLTIP_ANCHOR_RATIO = 0.95;
 
 const buildPath = (points: { x: number; y: number }[]) => {
   if (!points.length) {
@@ -44,13 +53,33 @@ const buildPath = (points: { x: number; y: number }[]) => {
     .join(" ");
 };
 
-const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: SpendingLineChartProps) => {
+const SpendingLineChartComponent = ({
+  data,
+  style,
+  comparison,
+  formatValue,
+  onActiveChange,
+}: SpendingLineChartProps) => {
   const theme = useAppTheme();
   const [containerWidth, setContainerWidth] = useState(MIN_CHART_WIDTH);
-  const [activeIndex, setActiveIndex] = useState(() => (data.length ? data.length - 1 : 0));
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const touchActiveRef = useRef(false);
   const chartWidth = Math.max(containerWidth, MIN_CHART_WIDTH);
   const usableHeight = CHART_HEIGHT - VERTICAL_PADDING * 2;
   const baseLineY = CHART_HEIGHT - VERTICAL_PADDING;
+  const handleRelease = useCallback(() => {
+    touchActiveRef.current = false;
+    setActiveIndex(null);
+  }, []);
+
+  const extractTouchX = useCallback((event: GestureResponderEvent) => {
+    const primaryTouch = event.nativeEvent.touches?.[0];
+    if (primaryTouch && typeof primaryTouch.locationX === "number") {
+      return primaryTouch.locationX;
+    }
+
+    return event.nativeEvent.locationX;
+  }, []);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -63,22 +92,23 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
   );
 
   useEffect(() => {
-    if (!data.length) {
-      setActiveIndex(0);
+    setActiveIndex(null);
+  }, [data.length]);
+
+  useEffect(() => {
+    if (!onActiveChange) {
       return;
     }
 
-    setActiveIndex((previous) => Math.min(previous, data.length - 1));
-  }, [data]);
+    if (activeIndex === null) {
+      onActiveChange(null);
+      return;
+    }
 
-  const {
-    primaryPath,
-    primaryPoints,
-    comparisonPath,
-    comparisonPoints,
-    areaPath,
-    step,
-  } = useMemo(() => {
+    onActiveChange(data[activeIndex] ?? null);
+  }, [activeIndex, data, onActiveChange]);
+
+  const { primaryPath, primaryPoints, comparisonPath, comparisonPoints, areaPath } = useMemo(() => {
     if (!data.length) {
       return {
         primaryPath: "",
@@ -86,7 +116,6 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
         comparisonPath: "",
         comparisonPoints: [] as (SpendingPoint & { x: number; y: number })[],
         areaPath: "",
-        step: chartWidth,
       };
     }
 
@@ -124,18 +153,93 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
       primaryPoints: primaryPointsMeta,
       comparisonPoints: comparisonPointsMeta,
       areaPath: areaPathString,
-      step: stepValue,
     };
   }, [baseLineY, chartWidth, comparison, data, usableHeight]);
 
-  const activePoint = primaryPoints[activeIndex];
-  const activeComparison = comparisonPoints[activeIndex];
+  const activePoint = activeIndex !== null ? primaryPoints[activeIndex] : undefined;
+  const activeComparison =
+    activeIndex !== null ? comparisonPoints[activeIndex] : undefined;
   const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
   const format = formatValue ?? ((value: number) => `${value}`);
+  const [tooltipSize, setTooltipSize] = useState<{ width: number; height: number } | null>(null);
+
+  const tooltipPosition = useMemo(() => {
+    if (!activePoint) {
+      return null;
+    }
+
+    const width = tooltipSize?.width ?? 140;
+    const height = tooltipSize?.height ?? 72;
+    const margin = 12;
+    const anchorY = Math.max(
+      VERTICAL_PADDING,
+      Math.min(CHART_HEIGHT - VERTICAL_PADDING, activePoint.y),
+    );
+    const proposedTop = anchorY - height / 2;
+    const top = Math.min(
+      CHART_HEIGHT - height - margin,
+      Math.max(margin, proposedTop),
+    );
+    const left = Math.min(
+      chartWidth - margin - width,
+      Math.max(margin, activePoint.x - width / 2),
+    );
+
+    return { top, left };
+  }, [activePoint, chartWidth, tooltipSize]);
+
+  const updateActiveIndexFromX = useCallback(
+    (x: number | undefined) => {
+      if (typeof x !== "number" || !primaryPoints.length) {
+        return;
+      }
+
+      const clampedX = Math.max(0, Math.min(chartWidth, x));
+      let nextIndex = 0;
+      let smallestDistance = Number.POSITIVE_INFINITY;
+
+      primaryPoints.forEach((point, index) => {
+        const distance = Math.abs(point.x - clampedX);
+        if (distance < smallestDistance) {
+          smallestDistance = distance;
+          nextIndex = index;
+        }
+      });
+
+      setActiveIndex((previous) => (previous === nextIndex ? previous : nextIndex));
+    },
+    [chartWidth, primaryPoints],
+  );
+
+  const handleTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      touchActiveRef.current = true;
+      updateActiveIndexFromX(extractTouchX(event));
+    },
+    [extractTouchX, updateActiveIndexFromX],
+  );
+
+  const handleTouchMove = useCallback(
+    (event: GestureResponderEvent) => {
+      if (!touchActiveRef.current) {
+        return;
+      }
+
+      updateActiveIndexFromX(extractTouchX(event));
+    },
+    [extractTouchX, updateActiveIndexFromX],
+  );
 
   return (
-    <View style={[{ width: "100%" }, style]} onLayout={handleLayout}>
-      {activePoint && (
+    <View
+      style={[{ width: "100%" }, style]}
+      onLayout={handleLayout}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleRelease}
+      onTouchCancel={handleRelease}
+    >
+      {activePoint && tooltipPosition ? (
         <View
           pointerEvents="none"
           style={[
@@ -143,18 +247,26 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
             {
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
+              top: tooltipPosition.top,
+              left: tooltipPosition.left,
             },
           ]}
+          onLayout={(event) =>
+            setTooltipSize({
+              width: event.nativeEvent.layout.width,
+              height: event.nativeEvent.layout.height,
+            })
+          }
         >
           <Text style={[styles.tooltipTitle, { color: theme.colors.text }]}>Day {activeLabel}</Text>
           <Text style={[styles.tooltipValue, { color: theme.colors.primary }]}>{format(activePoint.value)}</Text>
           {activeComparison ? (
-            <Text style={[styles.tooltipCaption, { color: theme.colors.textMuted }]}> 
+            <Text style={[styles.tooltipCaption, { color: theme.colors.textMuted }]}>
               Last month: {format(activeComparison.value)}
             </Text>
           ) : null}
         </View>
-      )}
+      ) : null}
       <Svg width={chartWidth} height={CHART_HEIGHT} viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}>
         <Defs>
           <LinearGradient id="spendingLineGradient" x1="0" x2="0" y1="0" y2="1">
@@ -259,36 +371,35 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
               fill={theme.colors.primary}
               stroke={theme.colors.background}
               strokeWidth={2}
-              onPress={() => setActiveIndex(index)}
             />
           </Fragment>
         ))}
 
-        {primaryPoints.map((point, index) => {
-          const rectX = Math.max(0, point.x - step / 2);
-          const rectWidth = Math.min(step || chartWidth, chartWidth - rectX);
-
-          return (
-            <Rect
-              key={`hit-${index}`}
-              x={rectX}
-              y={0}
-              width={rectWidth}
-              height={CHART_HEIGHT}
-              fill="transparent"
-              onPress={() => setActiveIndex(index)}
-            />
-          );
-        })}
       </Svg>
     </View>
   );
 };
 
-const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
+const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }: SpendingChartProps) => {
   const theme = useAppTheme();
   const [containerWidth, setContainerWidth] = useState(MIN_CHART_WIDTH);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const touchActiveRef = useRef(false);
   const chartWidth = Math.max(containerWidth, MIN_CHART_WIDTH);
+  const format = formatValue ?? ((value: number) => `${value}`);
+  const handleRelease = useCallback(() => {
+    touchActiveRef.current = false;
+    setActiveIndex(null);
+  }, []);
+
+  const extractTouchX = useCallback((event: GestureResponderEvent) => {
+    const primaryTouch = event.nativeEvent.touches?.[0];
+    if (primaryTouch && typeof primaryTouch.locationX === "number") {
+      return primaryTouch.locationX;
+    }
+
+    return event.nativeEvent.locationX;
+  }, []);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -300,10 +411,40 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
     [containerWidth],
   );
 
+  useEffect(() => {
+    if (!data.length) {
+      setActiveIndex(null);
+      return;
+    }
+
+    setActiveIndex((previous) => {
+      if (previous === null) {
+        return null;
+      }
+
+      return Math.min(previous, data.length - 1);
+    });
+  }, [data]);
+
+  useEffect(() => {
+    if (!onActiveChange) {
+      return;
+    }
+
+    if (activeIndex === null) {
+      onActiveChange(null);
+      return;
+    }
+
+    onActiveChange(data[activeIndex] ?? null);
+  }, [activeIndex, data, onActiveChange]);
+
   const bars = useMemo(() => {
     if (!data.length) {
       return [] as {
         label: string;
+        hint?: string;
+        value: number;
         x: number;
         y: number;
         width: number;
@@ -324,6 +465,8 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
 
       return {
         label: item.label,
+        hint: item.hint,
+        value: item.value,
         x,
         y,
         width: barWidth,
@@ -332,8 +475,122 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
     });
   }, [chartWidth, data]);
 
+  const activePoint = activeIndex !== null ? bars[activeIndex] : undefined;
+  const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
+  const [tooltipSize, setTooltipSize] = useState<{ width: number; height: number } | null>(null);
+
+  const tooltipPosition = useMemo(() => {
+    if (!activePoint) {
+      return null;
+    }
+
+    const width = tooltipSize?.width ?? 140;
+    const height = tooltipSize?.height ?? 64;
+    const margin = 12;
+    const barCenterX = activePoint.x + activePoint.width / 2;
+    const desiredAnchorY =
+      activePoint.y + activePoint.height * (1 - BAR_TOOLTIP_ANCHOR_RATIO);
+    const anchorY = Math.max(
+      VERTICAL_PADDING,
+      Math.min(CHART_HEIGHT - VERTICAL_PADDING, desiredAnchorY),
+    );
+    const proposedTop = anchorY - height / 2;
+    const top = Math.min(
+      CHART_HEIGHT - height - margin,
+      Math.max(margin, proposedTop),
+    );
+    const left = Math.min(
+      chartWidth - margin - width,
+      Math.max(margin, barCenterX - width / 2),
+    );
+
+    return { top, left };
+  }, [activePoint, chartWidth, tooltipSize]);
+
+  const updateActiveIndexFromX = useCallback(
+    (x: number | undefined) => {
+      if (typeof x !== "number" || !bars.length) {
+        return;
+      }
+
+      const clampedX = Math.max(0, Math.min(chartWidth, x));
+      let nextIndex = bars.findIndex((bar) => clampedX >= bar.x && clampedX <= bar.x + bar.width);
+
+      if (nextIndex === -1) {
+        let smallestDistance = Number.POSITIVE_INFINITY;
+        bars.forEach((bar, index) => {
+          const center = bar.x + bar.width / 2;
+          const distance = Math.abs(center - clampedX);
+          if (distance < smallestDistance) {
+            smallestDistance = distance;
+            nextIndex = index;
+          }
+        });
+      }
+
+      if (nextIndex !== -1) {
+        setActiveIndex((previous) => (previous === nextIndex ? previous : nextIndex));
+      }
+    },
+    [bars, chartWidth],
+  );
+
+  const handleTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      touchActiveRef.current = true;
+      updateActiveIndexFromX(extractTouchX(event));
+    },
+    [extractTouchX, updateActiveIndexFromX],
+  );
+
+  const handleTouchMove = useCallback(
+    (event: GestureResponderEvent) => {
+      if (!touchActiveRef.current) {
+        return;
+      }
+
+      updateActiveIndexFromX(extractTouchX(event));
+    },
+    [extractTouchX, updateActiveIndexFromX],
+  );
+
   return (
-    <View style={[{ width: "100%" }, style]} onLayout={handleLayout}>
+    <View
+      style={[{ width: "100%" }, style]}
+      onLayout={handleLayout}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleRelease}
+      onTouchCancel={handleRelease}
+    >
+      {activePoint && tooltipPosition ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.tooltip,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              top: tooltipPosition.top,
+              left: tooltipPosition.left,
+            },
+          ]}
+          onLayout={(event) =>
+            setTooltipSize({
+              width: event.nativeEvent.layout.width,
+              height: event.nativeEvent.layout.height,
+            })
+          }
+        >
+          <Text style={[styles.tooltipTitle, { color: theme.colors.text }]}>Spending</Text>
+          <Text style={[styles.tooltipValue, { color: theme.colors.primary }]}>
+            {format(activePoint.value)}
+          </Text>
+          {activeLabel ? (
+            <Text style={[styles.tooltipCaption, { color: theme.colors.textMuted }]}>on {activeLabel}</Text>
+          ) : null}
+        </View>
+      ) : null}
       <Svg width={chartWidth} height={CHART_HEIGHT} viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}>
         <Path
           d={`M0,${CHART_HEIGHT - VERTICAL_PADDING} H${chartWidth}`}
@@ -341,22 +598,22 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
           strokeWidth={1}
         />
 
-        {bars.map((bar) => (
+        {bars.map((bar, index) => (
           <Rect
-            key={`bar-${bar.label}`}
+            key={`bar-${index}`}
             x={bar.x}
             y={bar.y}
             width={bar.width}
             height={bar.height}
             rx={8}
             fill={theme.colors.primary}
-            opacity={0.85}
+            opacity={activeIndex === index ? 1 : 0.7}
           />
         ))}
 
-        {bars.map((bar) => (
+        {bars.map((bar, index) => (
           <SvgText
-            key={`bar-label-${bar.label}`}
+            key={`bar-label-${index}`}
             x={bar.x + bar.width / 2}
             y={CHART_HEIGHT - VERTICAL_PADDING + 18}
             fontSize={12}
@@ -374,13 +631,14 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
 const styles = StyleSheet.create({
   tooltip: {
     position: "absolute",
-    top: 8,
-    left: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
     gap: 2,
+    minWidth: 120,
+    zIndex: 10,
+    elevation: 4,
   },
   tooltipTitle: {
     fontSize: 12,
