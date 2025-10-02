@@ -159,8 +159,10 @@ const DEFAULT_INSETS: EdgeInsets = { top: 0, bottom: 0, left: 0, right: 0 };
 const createStyles = (
   theme: ReturnType<typeof useAppTheme>,
   insets: EdgeInsets = DEFAULT_INSETS,
-) =>
-  StyleSheet.create({
+) => {
+  const iosInset = Platform.OS === "ios" ? Math.max(insets.bottom - 6, 0) : 0;
+
+  return StyleSheet.create({
     tabBar: {
       position: "absolute",
       left: 12 + insets.left,
@@ -180,8 +182,11 @@ const createStyles = (
       shadowOffset: { width: 0, height: 10 },
       minHeight: Platform.select({ ios: 70, default: 66 }),
       paddingHorizontal: 4,
-      paddingTop: 6,
-      paddingBottom: Platform.select({ ios: 12 + insets.bottom, default: 10 + insets.bottom * 0.6 }),
+      paddingTop: Platform.select({ ios: 10 + iosInset * 0.35, default: 6 }),
+      paddingBottom: Platform.select({
+        ios: 14 + iosInset * 0.65,
+        default: 10 + insets.bottom * 0.6,
+      }),
     },
     tabLabel: {
       fontSize: 10,
@@ -196,7 +201,8 @@ const createStyles = (
       alignItems: "center",
       justifyContent: "center",
       marginHorizontal: 0,
-      paddingVertical: 0,
+      paddingTop: Platform.select({ ios: iosInset * 0.35, default: 0 }),
+      paddingBottom: 0,
       paddingHorizontal: 2,
       minWidth: 0,
     },
@@ -230,3 +236,4 @@ const createStyles = (
       letterSpacing: 0.2,
     },
   });
+};
