@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useAppTheme } from "../../theme";
@@ -39,7 +39,8 @@ export default function AccountScreen() {
   const [goalPeriod, setGoalPeriod] = useState<(typeof goalPeriods)[number]>("month");
   const [goalCategory, setGoalCategory] = useState<string | null>(null);
 
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
 
   useEffect(() => {
     setName(profile.name);
@@ -102,7 +103,11 @@ export default function AccountScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={24}
       >
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.header}>
             <Text style={styles.title}>Account & preferences</Text>
             <Text style={styles.subtitle}>Personalize how your finance world looks.</Text>
@@ -320,7 +325,10 @@ export default function AccountScreen() {
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+const createStyles = (
+  theme: ReturnType<typeof useAppTheme>,
+  insets: ReturnType<typeof useSafeAreaInsets>,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -331,7 +339,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     content: {
       flexGrow: 1,
-      padding: theme.spacing.xl,
+      paddingTop: theme.spacing.xl,
+      paddingHorizontal: theme.spacing.xl,
+      paddingBottom: theme.spacing.xl + insets.bottom,
       gap: theme.spacing.xl,
     },
     header: {
