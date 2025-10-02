@@ -3,6 +3,8 @@ import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-nat
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { EdgeInsets } from "react-native-safe-area-context";
 
 import { useAppTheme } from "../../theme";
 
@@ -65,7 +67,8 @@ function AnimatedTabIcon({ focused, color, size, activeName, inactiveName }: Ani
 
 export default function TabsLayout() {
   const theme = useAppTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
 
   return (
     <Tabs
@@ -151,13 +154,23 @@ export default function TabsLayout() {
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
-  StyleSheet.create({
+const DEFAULT_INSETS: EdgeInsets = { top: 0, bottom: 0, left: 0, right: 0 };
+
+const createStyles = (
+  theme: ReturnType<typeof useAppTheme>,
+  insets: EdgeInsets = DEFAULT_INSETS,
+) => {
+  const iosInset = Platform.OS === "ios" ? Math.max(insets.bottom - 6, 0) : 0;
+
+  return StyleSheet.create({
     tabBar: {
       position: "absolute",
-      left: 12,
-      right: 12,
-      bottom: Platform.select({ ios: 26, default: 18 }),
+      left: 12 + insets.left,
+      right: 12 + insets.right,
+      bottom: Platform.select({
+        ios: Math.max(12, insets.bottom * 0.5),
+        default: 18,
+      }),
       alignSelf: "center",
       backgroundColor: theme.colors.surface,
       borderTopWidth: 0,
@@ -167,10 +180,13 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       shadowOpacity: Platform.OS === "ios" ? 0.18 : 0.2,
       shadowRadius: 16,
       shadowOffset: { width: 0, height: 10 },
-      height: Platform.select({ ios: 70, default: 66 }),
+      minHeight: Platform.select({ ios: 70, default: 66 }),
       paddingHorizontal: 4,
-      paddingTop: 6,
-      paddingBottom: Platform.select({ ios: 16, default: 10 }),
+      paddingTop: Platform.select({ ios: 10 + iosInset * 0.35, default: 6 }),
+      paddingBottom: Platform.select({
+        ios: 14 + iosInset * 0.65,
+        default: 10 + insets.bottom * 0.6,
+      }),
     },
     tabLabel: {
       fontSize: 10,
@@ -185,7 +201,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       alignItems: "center",
       justifyContent: "center",
       marginHorizontal: 0,
-      paddingVertical: 0,
+      paddingTop: Platform.select({ ios: iosInset * 0.35, default: 0 }),
+      paddingBottom: 0,
       paddingHorizontal: 2,
       minWidth: 0,
     },
@@ -219,3 +236,4 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       letterSpacing: 0.2,
     },
   });
+};

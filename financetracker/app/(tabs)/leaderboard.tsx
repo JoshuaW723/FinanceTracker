@@ -1,5 +1,6 @@
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useMemo } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useAppTheme } from "../../theme";
@@ -12,7 +13,8 @@ const mockLeaders = [
 
 export default function LeaderboardScreen() {
   const theme = useAppTheme();
-  const styles = createStyles(theme);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -44,12 +46,17 @@ export default function LeaderboardScreen() {
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+const createStyles = (
+  theme: ReturnType<typeof useAppTheme>,
+  insets: ReturnType<typeof useSafeAreaInsets>,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
       backgroundColor: theme.colors.background,
-      padding: theme.spacing.xl,
+      paddingTop: theme.spacing.xl,
+      paddingHorizontal: theme.spacing.xl,
+      paddingBottom: theme.spacing.xl + insets.bottom,
     },
     header: {
       gap: theme.spacing.sm,
@@ -62,7 +69,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       ...theme.typography.subtitle,
     },
     listContent: {
-      paddingBottom: theme.spacing.xxl * 1.5,
+      paddingBottom: theme.spacing.xxl * 1.5 + insets.bottom,
       gap: theme.spacing.lg,
     },
     card: {

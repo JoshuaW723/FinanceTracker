@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import dayjs, { type Dayjs } from "dayjs";
 
@@ -78,7 +78,8 @@ export default function TransactionsScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
 
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
 
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
@@ -334,6 +335,7 @@ export default function TransactionsScreen() {
         keyExtractor={(item) => item.id}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={styles.listContent}
+        contentInsetAdjustmentBehavior="automatic"
         ListHeaderComponent={
           <View style={styles.header}>
             <View style={styles.headingBlock}>
@@ -343,11 +345,11 @@ export default function TransactionsScreen() {
               </Text>
             </View>
             <View style={styles.periodTabs}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.periodTabsContent}
-              >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.periodTabsContent}
+            >
                 {periodOptions.map((option) => {
                   const active = option.key === selectedPeriod;
                   return (
@@ -396,11 +398,11 @@ export default function TransactionsScreen() {
             </View>
 
             {hasActiveFilters && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.activeFiltersRow}
-              >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.activeFiltersRow}
+            >
                 {activeFilters.map((filter) => (
                   <Pressable
                     key={filter.key}
@@ -680,6 +682,7 @@ export default function TransactionsScreen() {
               style={styles.filtersSheet}
               contentContainerStyle={styles.filtersSheetContent}
               showsVerticalScrollIndicator={false}
+              contentInsetAdjustmentBehavior="automatic"
             >
               <View style={styles.sheetRow}>
                 <View style={styles.sheetColumn}>
@@ -815,7 +818,10 @@ export default function TransactionsScreen() {
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+const createStyles = (
+  theme: ReturnType<typeof useAppTheme>,
+  insets: ReturnType<typeof useSafeAreaInsets>,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -824,7 +830,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     listContent: {
       paddingHorizontal: theme.spacing.lg,
       paddingTop: theme.spacing.lg,
-      paddingBottom: theme.spacing.xl,
+      paddingBottom: theme.spacing.xl + insets.bottom,
       gap: theme.spacing.lg,
     },
     header: {
@@ -949,7 +955,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flex: 1,
       backgroundColor: theme.colors.background,
       paddingHorizontal: theme.spacing.lg,
-      paddingBottom: theme.spacing.xl,
+      paddingBottom: theme.spacing.xl + insets.bottom,
       gap: theme.spacing.lg,
     },
     searchModalHeader: {
@@ -1035,7 +1041,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     filtersSheetContent: {
       gap: theme.spacing.lg,
-      paddingBottom: theme.spacing.xl,
+      paddingBottom: theme.spacing.xl + insets.bottom,
     },
     sheetRow: {
       flexDirection: "row",

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
 import { useRouter } from "expo-router";
@@ -80,7 +80,8 @@ export default function HomeScreen() {
   const [topSpendingPeriod, setTopSpendingPeriod] = useState<"week" | "month">("month");
   const [showBalance, setShowBalance] = useState(true);
 
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
 
   useEffect(() => {
     if (overviewPeriod === "week" && overviewChart === "line") {
@@ -368,7 +369,11 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <Text style={styles.hello}>Welcome back, {profile.name.split(" ")[0]}</Text>
           <Text style={styles.subtitle}>Here’s a tidy look at your money this month.</Text>
@@ -714,7 +719,10 @@ export default function HomeScreen() {
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+const createStyles = (
+  theme: ReturnType<typeof useAppTheme>,
+  insets: ReturnType<typeof useSafeAreaInsets>,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -723,7 +731,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     content: {
       paddingHorizontal: theme.spacing.md,
       paddingTop: theme.spacing.lg,
-      paddingBottom: theme.spacing.xxl + 96,
+      paddingBottom: theme.spacing.xxl + 96 + insets.bottom,
       gap: theme.spacing.lg,
     },
     header: {
