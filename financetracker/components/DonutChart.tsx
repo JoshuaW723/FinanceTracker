@@ -83,8 +83,9 @@ const DonutChartComponent = ({ data, style }: DonutChartProps) => {
               stroke={segment.color}
               strokeWidth={STROKE_WIDTH}
               fill="none"
-              strokeLinecap="round"
-              strokeOpacity={0.9}
+              strokeLinecap="butt"
+              strokeLinejoin="round"
+              strokeOpacity={1}
             />
           ))}
         </G>

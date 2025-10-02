@@ -41,6 +41,7 @@ const MIN_CHART_WIDTH = 320;
 const VERTICAL_PADDING = 32;
 const HORIZONTAL_PADDING = 24;
 const GRID_LINE_COUNT = 4;
+const BAR_TOOLTIP_ANCHOR_RATIO = 0.95;
 
 const buildPath = (points: { x: number; y: number }[]) => {
   if (!points.length) {
@@ -487,7 +488,8 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
     const height = tooltipSize?.height ?? 64;
     const margin = 12;
     const barCenterX = activePoint.x + activePoint.width / 2;
-    const desiredAnchorY = activePoint.y + activePoint.height * 0.15;
+    const desiredAnchorY =
+      activePoint.y + activePoint.height * (1 - BAR_TOOLTIP_ANCHOR_RATIO);
     const anchorY = Math.max(
       VERTICAL_PADDING,
       Math.min(CHART_HEIGHT - VERTICAL_PADDING, desiredAnchorY),
