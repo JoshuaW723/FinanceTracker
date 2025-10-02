@@ -165,7 +165,10 @@ const createStyles = (
       position: "absolute",
       left: 12 + insets.left,
       right: 12 + insets.right,
-      bottom: Math.max(Platform.select({ ios: 26, default: 18 }), insets.bottom + 12),
+      bottom: Platform.select({
+        ios: Math.max(12, insets.bottom * 0.5),
+        default: 18,
+      }),
       alignSelf: "center",
       backgroundColor: theme.colors.surface,
       borderTopWidth: 0,
