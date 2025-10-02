@@ -21,11 +21,11 @@ export interface SpendingPoint {
 interface SpendingChartProps {
   data: SpendingPoint[];
   style?: ViewStyle;
+  formatValue?: (value: number) => string;
 }
 
 interface SpendingLineChartProps extends SpendingChartProps {
   comparison?: SpendingPoint[];
-  formatValue?: (value: number) => string;
 }
 
 const CHART_HEIGHT = 200;
@@ -285,10 +285,12 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
   );
 };
 
-const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
+const SpendingBarChartComponent = ({ data, style, formatValue }: SpendingChartProps) => {
   const theme = useAppTheme();
   const [containerWidth, setContainerWidth] = useState(MIN_CHART_WIDTH);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const chartWidth = Math.max(containerWidth, MIN_CHART_WIDTH);
+  const format = formatValue ?? ((value: number) => `${value}`);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -300,10 +302,27 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
     [containerWidth],
   );
 
+  useEffect(() => {
+    if (!data.length) {
+      setActiveIndex(null);
+      return;
+    }
+
+    setActiveIndex((previous) => {
+      if (previous === null) {
+        return null;
+      }
+
+      return Math.min(previous, data.length - 1);
+    });
+  }, [data]);
+
   const bars = useMemo(() => {
     if (!data.length) {
       return [] as {
         label: string;
+        hint?: string;
+        value: number;
         x: number;
         y: number;
         width: number;
@@ -324,6 +343,8 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
 
       return {
         label: item.label,
+        hint: item.hint,
+        value: item.value,
         x,
         y,
         width: barWidth,
@@ -332,8 +353,31 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
     });
   }, [chartWidth, data]);
 
+  const activePoint = activeIndex !== null ? bars[activeIndex] : undefined;
+  const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
+
   return (
     <View style={[{ width: "100%" }, style]} onLayout={handleLayout}>
+      {activePoint ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.tooltip,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <Text style={[styles.tooltipTitle, { color: theme.colors.text }]}>Spending</Text>
+          <Text style={[styles.tooltipValue, { color: theme.colors.primary }]}>
+            {format(activePoint.value)}
+          </Text>
+          {activeLabel ? (
+            <Text style={[styles.tooltipCaption, { color: theme.colors.textMuted }]}>on {activeLabel}</Text>
+          ) : null}
+        </View>
+      ) : null}
       <Svg width={chartWidth} height={CHART_HEIGHT} viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}>
         <Path
           d={`M0,${CHART_HEIGHT - VERTICAL_PADDING} H${chartWidth}`}
@@ -341,22 +385,35 @@ const SpendingBarChartComponent = ({ data, style }: SpendingChartProps) => {
           strokeWidth={1}
         />
 
-        {bars.map((bar) => (
+        {bars.map((bar, index) => (
           <Rect
-            key={`bar-${bar.label}`}
+            key={`bar-${index}`}
             x={bar.x}
             y={bar.y}
             width={bar.width}
             height={bar.height}
             rx={8}
             fill={theme.colors.primary}
-            opacity={0.85}
+            opacity={activeIndex === index ? 1 : 0.7}
+            onPress={() => setActiveIndex(index)}
           />
         ))}
 
-        {bars.map((bar) => (
+        {bars.map((bar, index) => (
+          <Rect
+            key={`hit-${index}`}
+            x={bar.x}
+            y={VERTICAL_PADDING}
+            width={bar.width}
+            height={CHART_HEIGHT - VERTICAL_PADDING}
+            fill="transparent"
+            onPress={() => setActiveIndex(index)}
+          />
+        ))}
+
+        {bars.map((bar, index) => (
           <SvgText
-            key={`bar-label-${bar.label}`}
+            key={`bar-label-${index}`}
             x={bar.x + bar.width / 2}
             y={CHART_HEIGHT - VERTICAL_PADDING + 18}
             fontSize={12}

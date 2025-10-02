@@ -215,6 +215,7 @@ export default function HomeScreen() {
             return {
               label: target.format("MMM"),
               value: spent,
+              hint: target.format("MMMM YYYY"),
             };
           })
         : [];
@@ -485,6 +486,9 @@ export default function HomeScreen() {
               <SpendingBarChart
                 data={overviewPeriod === "month" ? monthlyComparison : periodDailySpending}
                 style={styles.chart}
+                formatValue={(value) =>
+                  formatCurrency(value, currency, { maximumFractionDigits: 0 })
+                }
               />
             )}
           </View>
