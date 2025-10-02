@@ -42,7 +42,7 @@ const buildMonthlyPeriods = (): PeriodOption[] => {
   const currentMonth = dayjs().startOf("month");
 
   return Array.from({ length: MONTHS_TO_DISPLAY }).map((_, index) => {
-    const month = currentMonth.subtract(index, "month");
+    const month = currentMonth.subtract(MONTHS_TO_DISPLAY - 1 - index, "month");
     const start = month.startOf("month");
     const end = month.endOf("month");
 
@@ -63,7 +63,10 @@ export default function TransactionsScreen() {
   const logRecurringTransaction = useFinanceStore((state) => state.logRecurringTransaction);
 
   const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
-  const [selectedPeriod, setSelectedPeriod] = useState(() => periodOptions[0]?.key ?? "");
+  const [selectedPeriod, setSelectedPeriod] = useState(() => {
+    const lastPeriod = periodOptions[periodOptions.length - 1];
+    return lastPeriod?.key ?? "";
+  });
   const [reportExpanded, setReportExpanded] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
@@ -1125,7 +1128,7 @@ const createStyles = (
     },
     sectionHeader: {
       ...theme.typography.label,
-      marginBottom: theme.spacing.sm,
+      marginBottom: theme.spacing.xs,
     },
     summaryCard: {
       gap: theme.spacing.md,
@@ -1133,7 +1136,7 @@ const createStyles = (
     summaryHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
+      alignItems: "flex-end",
     },
     summaryTitleBlock: {
       gap: 6,
@@ -1164,17 +1167,20 @@ const createStyles = (
     summaryStats: {
       flexDirection: "row",
       justifyContent: "space-between",
-      gap: theme.spacing.md,
+      alignItems: "flex-start",
+      gap: theme.spacing.sm,
     },
     summaryStat: {
       flex: 1,
       gap: theme.spacing.xs,
+      alignItems: "flex-start",
     },
     statLabel: {
       ...theme.typography.subtitle,
-      fontSize: 12,
+      fontSize: 11,
       textTransform: "uppercase",
-      letterSpacing: 1.2,
+      letterSpacing: 1,
+      textAlign: "left",
     },
     statValue: {
       fontSize: 16,
@@ -1243,16 +1249,19 @@ const createStyles = (
       fontSize: 13,
     },
     transactionCard: {
-      gap: theme.spacing.md,
+      gap: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.md,
     },
     transactionMain: {
       flexDirection: "row",
-      gap: theme.spacing.md,
+      alignItems: "center",
+      gap: theme.spacing.sm,
     },
     categoryAvatar: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -1269,7 +1278,7 @@ const createStyles = (
     },
     transactionCopy: {
       flex: 1,
-      gap: 4,
+      gap: 2,
     },
     transactionNote: {
       ...theme.typography.body,
@@ -1277,21 +1286,22 @@ const createStyles = (
     },
     transactionMeta: {
       ...theme.typography.subtitle,
-      fontSize: 12,
+      fontSize: 11,
     },
     transactionAmountBlock: {
       justifyContent: "center",
+      alignItems: "flex-end",
     },
     transactionAmount: {
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: "600",
       textAlign: "right",
     },
     itemSeparator: {
-      height: theme.spacing.sm,
+      height: theme.spacing.xs,
     },
     sectionSeparator: {
-      height: theme.spacing.lg,
+      height: theme.spacing.md,
     },
     emptyState: {
       alignItems: "center",
