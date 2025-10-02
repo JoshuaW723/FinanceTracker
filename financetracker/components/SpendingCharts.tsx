@@ -170,12 +170,15 @@ const SpendingLineChartComponent = ({
     const width = tooltipSize?.width ?? 140;
     const height = tooltipSize?.height ?? 72;
     const margin = 12;
-    const proposedTop = activePoint.y - height - margin;
-    const clampedTop = Math.max(margin, proposedTop);
-    const needsBelow = proposedTop < margin;
-    const top = needsBelow
-      ? Math.min(CHART_HEIGHT - height - margin, activePoint.y + margin)
-      : clampedTop;
+    const anchorY = Math.max(
+      VERTICAL_PADDING,
+      Math.min(CHART_HEIGHT - VERTICAL_PADDING, activePoint.y),
+    );
+    const proposedTop = anchorY - height / 2;
+    const top = Math.min(
+      CHART_HEIGHT - height - margin,
+      Math.max(margin, proposedTop),
+    );
     const left = Math.min(
       chartWidth - margin - width,
       Math.max(margin, activePoint.x - width / 2),
@@ -484,12 +487,18 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
     const height = tooltipSize?.height ?? 64;
     const margin = 12;
     const barCenterX = activePoint.x + activePoint.width / 2;
-    const proposedTop = activePoint.y - height - margin;
-    const clampedTop = Math.max(margin, proposedTop);
-    const needsBelow = proposedTop < margin;
-    const top = needsBelow
-      ? Math.min(CHART_HEIGHT - height - margin, activePoint.y + activePoint.height + margin)
-      : clampedTop;
+    const anchorY = Math.max(
+      VERTICAL_PADDING,
+      Math.min(
+        CHART_HEIGHT - VERTICAL_PADDING,
+        activePoint.y + Math.min(activePoint.height / 2, 48),
+      ),
+    );
+    const proposedTop = anchorY - height / 2;
+    const top = Math.min(
+      CHART_HEIGHT - height - margin,
+      Math.max(margin, proposedTop),
+    );
     const left = Math.min(
       chartWidth - margin - width,
       Math.max(margin, barCenterX - width / 2),

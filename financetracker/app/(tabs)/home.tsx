@@ -291,17 +291,49 @@ export default function HomeScreen() {
 
     const totalSpent = filtered.reduce((acc, transaction) => acc + transaction.amount, 0);
 
-    const entries = Array.from(totalsByCategory.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
-      .map(([category, amount]) => ({
-        category,
-        amount,
-        percentage: totalSpent ? Math.round((amount / totalSpent) * 100) : 0,
-      }));
+    const sorted = Array.from(totalsByCategory.entries()).sort((a, b) => b[1] - a[1]);
+    const topThree = sorted.slice(0, 3);
+    const remaining = sorted.slice(3);
+    const othersTotal = remaining.reduce((acc, [, amount]) => acc + amount, 0);
+
+    const entries = topThree.map(([category, amount]) => ({
+      key: category,
+      label: category,
+      amount,
+      percentage: totalSpent ? Math.round((amount / totalSpent) * 100) : 0,
+    }));
+
+    if (othersTotal > 0) {
+      entries.push({
+        key: "__others__",
+        label: "Others",
+        amount: othersTotal,
+        percentage: totalSpent ? Math.round((othersTotal / totalSpent) * 100) : 0,
+      });
+    }
 
     return { entries, totalSpent };
   }, [topSpendingPeriod, transactions]);
+
+  const donutColors = useMemo(
+    () => [
+      theme.colors.primary,
+      theme.colors.accent,
+      theme.colors.success,
+      theme.colors.danger,
+      theme.colors.primaryMuted,
+    ],
+    [theme],
+  );
+
+  const topSpendingEntries = useMemo(
+    () =>
+      topSpending.entries.map((entry, index) => ({
+        ...entry,
+        color: donutColors[index % donutColors.length],
+      })),
+    [donutColors, topSpending.entries],
+  );
 
   const currency = profile.currency || "USD";
   const formattedBalance = formatCurrency(balance, currency);
@@ -521,24 +553,27 @@ export default function HomeScreen() {
               })}
             </View>
           </View>
-          {topSpending.entries.length ? (
+          {topSpendingEntries.length ? (
             <View style={styles.topSpendingContent}>
               <DonutChart
-                data={topSpending.entries.map((entry) => ({
-                  label: entry.category,
+                data={topSpendingEntries.map((entry) => ({
+                  label: entry.label,
                   value: entry.amount,
+                  color: entry.color,
                 }))}
               />
               <View style={styles.topSpendingList}>
-                {topSpending.entries.map((entry) => (
-                  <View key={entry.category} style={styles.topSpendingItem}>
+                {topSpendingEntries.map((entry) => (
+                  <View key={entry.key} style={styles.topSpendingItem}>
                     <View style={styles.topSpendingItemHeader}>
-                      <Text style={styles.topSpendingName}>{entry.category}</Text>
+                      <Text style={styles.topSpendingName}>{entry.label}</Text>
                       <Text style={styles.topSpendingAmount}>
                         {formatCurrency(entry.amount, currency)}
                       </Text>
                     </View>
-                    <Text style={styles.spendingPercentage}>{entry.percentage}% of spend</Text>
+                    <Text style={[styles.spendingPercentage, { color: entry.color }]}>
+                      {entry.percentage}% of spend
+                    </Text>
                   </View>
                 ))}
               </View>
