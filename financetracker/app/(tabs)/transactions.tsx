@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import {
   Modal,
   Platform,
@@ -30,6 +30,12 @@ const formatCurrency = (
     ...options,
   }).format(value);
 
+const formatPercentage = (current: number, previous: number): string => {
+  if (previous === 0) return "—";
+  const change = ((current - previous) / Math.abs(previous)) * 100;
+  return `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`;
+};
+
 interface PeriodOption {
   key: string;
   label: string;
@@ -40,16 +46,15 @@ const MONTHS_TO_DISPLAY = 12;
 
 const buildMonthlyPeriods = (): PeriodOption[] => {
   const currentMonth = dayjs().startOf("month");
-
   return Array.from({ length: MONTHS_TO_DISPLAY }).map((_, index) => {
     const month = currentMonth.subtract(MONTHS_TO_DISPLAY - 1 - index, "month");
-    const start = month.startOf("month");
-    const end = month.endOf("month");
-
     return {
       key: month.format("YYYY-MM"),
       label: month.format("MMM YYYY"),
-      range: () => ({ start, end }),
+      range: () => ({ 
+        start: month.startOf("month"), 
+        end: month.endOf("month") 
+      }),
     };
   });
 };
@@ -63,15 +68,26 @@ export default function TransactionsScreen() {
   const logRecurringTransaction = useFinanceStore((state) => state.logRecurringTransaction);
 
   const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
+  const scrollViewRef = useRef<ScrollView>(null);
+  
+  // Default to current month (last item in array)
   const [selectedPeriod, setSelectedPeriod] = useState(() => {
-    const lastPeriod = periodOptions[periodOptions.length - 1];
-    return lastPeriod?.key ?? "";
+    const currentMonth = periodOptions[periodOptions.length - 1];
+    return currentMonth?.key ?? "";
   });
-  const [reportExpanded, setReportExpanded] = useState(false);
+  
+  // Auto-scroll to current month on mount
+  useEffect(() => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: false });
+    }, 100);
+  }, []);
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
   const [draftSearchTerm, setDraftSearchTerm] = useState("");
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -79,14 +95,15 @@ export default function TransactionsScreen() {
   const [endDate, setEndDate] = useState<Dayjs | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
 
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
 
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
-      prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category],
+      prev.includes(category) 
+        ? prev.filter((item) => item !== category) 
+        : [...prev, category],
     );
   };
 
@@ -98,8 +115,6 @@ export default function TransactionsScreen() {
     setSelectedCategories([]);
     setStartDate(null);
     setEndDate(null);
-    setShowStartPicker(false);
-    setShowEndPicker(false);
   };
 
   const openSearch = (showFilters = false) => {
@@ -118,190 +133,152 @@ export default function TransactionsScreen() {
   const handleSearchSubmit = (term: string) => {
     const nextTerm = term.trim();
     setSearchTerm(nextTerm);
-    if (nextTerm.length) {
-      setSearchHistory((prev) => [nextTerm, ...prev.filter((item) => item !== nextTerm)].slice(0, 6));
-    }
     setSearchVisible(false);
     setShowStartPicker(false);
     setShowEndPicker(false);
   };
 
-  const removeFilter = (type: "search" | "min" | "max" | "start" | "end" | "category", value?: string) => {
-    if (type === "search") {
-      setSearchTerm("");
-      setDraftSearchTerm("");
-      return;
-    }
-    if (type === "min") {
-      setMinAmount("");
-      return;
-    }
-    if (type === "max") {
-      setMaxAmount("");
-      return;
-    }
-    if (type === "start") {
-      setStartDate(null);
-      return;
-    }
-    if (type === "end") {
-      setEndDate(null);
-      return;
-    }
-    if (type === "category" && value) {
-      setSelectedCategories((prev) => prev.filter((item) => item !== value));
-    }
-  };
-
   const activeFilters = useMemo(() => {
-    const filters: { key: string; label: string; type: Parameters<typeof removeFilter>[0]; value?: string }[] = [];
+    const filters: Array<{ key: string; label: string; type: string; value?: string }> = [];
     if (searchTerm) {
-      filters.push({ key: `search-${searchTerm}`, label: `“${searchTerm}”`, type: "search" });
+      filters.push({ key: `search-${searchTerm}`, label: searchTerm, type: "search" });
     }
     if (minAmount.trim()) {
-      filters.push({ key: "min", label: `Min ${minAmount}`, type: "min" });
+      filters.push({ key: "min", label: `Min ${formatCurrency(Number(minAmount), currency || "USD")}`, type: "min" });
     }
     if (maxAmount.trim()) {
-      filters.push({ key: "max", label: `Max ${maxAmount}`, type: "max" });
+      filters.push({ key: "max", label: `Max ${formatCurrency(Number(maxAmount), currency || "USD")}`, type: "max" });
     }
     if (startDate) {
-      filters.push({ key: "start", label: `From ${startDate.format("MMM D")}`, type: "start" });
+      filters.push({ key: "start", label: startDate.format("MMM D"), type: "start" });
     }
     if (endDate) {
-      filters.push({ key: "end", label: `To ${endDate.format("MMM D")}`, type: "end" });
+      filters.push({ key: "end", label: endDate.format("MMM D"), type: "end" });
     }
     selectedCategories.forEach((category) => {
-      filters.push({ key: `category-${category}`, label: category, type: "category", value: category });
+      filters.push({ key: `cat-${category}`, label: category, type: "category", value: category });
     });
     return filters;
-  }, [endDate, maxAmount, minAmount, searchTerm, selectedCategories, startDate]);
+  }, [endDate, maxAmount, minAmount, searchTerm, selectedCategories, startDate, currency]);
 
   const hasActiveFilters = activeFilters.length > 0;
 
-  const { sections, summary, expenseBreakdown, periodLabel, filteredRecurring } = useMemo(() => {
-    const fallback = {
-      key: dayjs().format("YYYY-MM"),
-      label: dayjs().format("MMM YYYY"),
-      range: () => ({ start: dayjs().startOf("month"), end: dayjs().endOf("month") }),
-    } satisfies PeriodOption;
-    const period = periodOptions.find((option) => option.key === selectedPeriod) ?? fallback;
+  const { sections, summary, expenseBreakdown, filteredRecurring } = useMemo(() => {
+    const period = periodOptions.find((option) => option.key === selectedPeriod) ?? periodOptions[periodOptions.length - 1];
     const { start, end } = period.range();
 
     const minAmountValue = Number(minAmount) || 0;
     const maxAmountValue = Number(maxAmount) || Number.POSITIVE_INFINITY;
-    const lowerBound = minAmount.trim() ? minAmountValue : 0;
-    const upperBound = maxAmount.trim() ? maxAmountValue : Number.POSITIVE_INFINITY;
 
-    const withinRange = transactions.filter((transaction) => {
+    const filtered = transactions.filter((transaction) => {
       const date = dayjs(transaction.date);
-      if (date.isBefore(start) || date.isAfter(end)) {
-        return false;
-      }
-
-      if (startDate && date.isBefore(startDate)) {
-        return false;
-      }
-
-      if (endDate && date.isAfter(endDate)) {
-        return false;
-      }
-
+      
+      // Period filter
+      if (date.isBefore(start) || date.isAfter(end)) return false;
+      
+      // Date range filters
+      if (startDate && date.isBefore(startDate)) return false;
+      if (endDate && date.isAfter(endDate)) return false;
+      
+      // Amount filters
       const amount = transaction.amount;
-      if (amount < lowerBound || amount > upperBound) {
-        return false;
-      }
-
+      if (minAmount.trim() && amount < minAmountValue) return false;
+      if (maxAmount.trim() && amount > maxAmountValue) return false;
+      
+      // Category filter
       if (selectedCategories.length && !selectedCategories.includes(transaction.category)) {
         return false;
       }
-
+      
+      // Search filter
       if (searchTerm.trim()) {
-        const query = searchTerm.trim().toLowerCase();
+        const query = searchTerm.toLowerCase();
         const matchesNote = transaction.note.toLowerCase().includes(query);
         const matchesCategory = transaction.category.toLowerCase().includes(query);
-        const numericQuery = query.replace(/[^0-9.]/g, "");
-        const matchesAmount = numericQuery
-          ? transaction.amount.toString().includes(numericQuery)
-          : false;
-        if (!matchesNote && !matchesCategory && !matchesAmount) {
-          return false;
-        }
+        if (!matchesNote && !matchesCategory) return false;
       }
-
+      
       return true;
     });
 
-    const sortedDesc = [...withinRange].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-
-    const grouped = new Map<string, Transaction[]>();
-    sortedDesc.forEach((transaction) => {
-      const key = dayjs(transaction.date).format("YYYY-MM-DD");
-      const existing = grouped.get(key) ?? [];
-      existing.push(transaction);
-      grouped.set(key, existing);
-    });
+    // Group by date with daily totals
+    const grouped = new Map<string, { transactions: Transaction[], dailyIncome: number, dailyExpense: number }>();
+    filtered
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .forEach((transaction) => {
+        const key = dayjs(transaction.date).format("YYYY-MM-DD");
+        const existing = grouped.get(key) ?? { transactions: [], dailyIncome: 0, dailyExpense: 0 };
+        existing.transactions.push(transaction);
+        if (transaction.type === "income") {
+          existing.dailyIncome += transaction.amount;
+        } else {
+          existing.dailyExpense += transaction.amount;
+        }
+        grouped.set(key, existing);
+      });
 
     const sectionData = Array.from(grouped.entries()).map(([key, value]) => ({
       title: dayjs(key).format("dddd, MMM D"),
-      data: value,
+      data: [value], // Wrap in array as SectionList expects array of items
+      dailyIncome: value.dailyIncome,
+      dailyExpense: value.dailyExpense,
     }));
 
-    const totals = withinRange.reduce(
+    // Calculate summary
+    const totals = filtered.reduce(
       (acc, transaction) => {
         if (transaction.type === "income") {
           acc.income += transaction.amount;
         } else {
           acc.expense += transaction.amount;
         }
-
         return acc;
       },
       { income: 0, expense: 0 },
     );
 
-    const sortedAsc = [...transactions].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-
+    // Calculate balances
     let openingBalance = 0;
-    let netChange = 0;
+    let previousPeriodNet = 0;
+    
+    transactions
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .forEach((transaction) => {
+        const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
+        const date = dayjs(transaction.date);
+        
+        if (date.isBefore(start)) {
+          openingBalance += value;
+          // Track previous period for percentage calculation
+          if (date.isAfter(start.subtract(1, "month"))) {
+            previousPeriodNet += value;
+          }
+        }
+      });
 
-    sortedAsc.forEach((transaction) => {
-      const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
-      const date = dayjs(transaction.date);
-
-      if (date.isBefore(start)) {
-        openingBalance += value;
-      } else if (!date.isAfter(end)) {
-        netChange += value;
-      }
-    });
-
+    const netChange = totals.income - totals.expense;
     const closingBalance = openingBalance + netChange;
 
-    const expenseMap = withinRange.reduce((acc, transaction) => {
-      if (transaction.type !== "expense") {
-        return acc;
-      }
-
+    // Expense breakdown
+    const expenseMap = filtered.reduce((acc, transaction) => {
+      if (transaction.type !== "expense") return acc;
       const current = acc.get(transaction.category) ?? 0;
       acc.set(transaction.category, current + transaction.amount);
       return acc;
     }, new Map<string, number>());
 
-    const expenseBreakdown = Array.from(expenseMap.entries())
+    const breakdown = Array.from(expenseMap.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
+      .slice(0, 5)
       .map(([category, amount]) => ({
         category,
         amount,
         percentage: totals.expense ? Math.round((amount / totals.expense) * 100) : 0,
       }));
 
-    const filteredRecurring = recurringTransactions.filter((recurring) => {
-      const occurrence = dayjs(recurring.nextOccurrence);
+    // Recurring transactions
+    const recurring = recurringTransactions.filter((item) => {
+      const occurrence = dayjs(item.nextOccurrence);
       return !occurrence.isBefore(start) && !occurrence.isAfter(end);
     });
 
@@ -310,13 +287,13 @@ export default function TransactionsScreen() {
       summary: {
         income: totals.income,
         expense: totals.expense,
-        net: totals.income - totals.expense,
+        net: netChange,
         openingBalance,
         closingBalance,
+        percentageChange: formatPercentage(netChange, previousPeriodNet),
       },
-      expenseBreakdown,
-      periodLabel: period.label,
-      filteredRecurring,
+      expenseBreakdown: breakdown,
+      filteredRecurring: recurring,
     };
   }, [
     endDate,
@@ -341,420 +318,349 @@ export default function TransactionsScreen() {
         contentInsetAdjustmentBehavior="automatic"
         ListHeaderComponent={
           <View style={styles.header}>
-            <View style={styles.headingBlock}>
-              <Text style={styles.title}>Transactions</Text>
-              <Text style={styles.subtitle}>
-                Review, search, and report on your cash flow.
-              </Text>
-            </View>
-            <View style={styles.periodTabs}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.periodTabsContent}
-            >
-                {periodOptions.map((option) => {
-                  const active = option.key === selectedPeriod;
-                  return (
-                    <Pressable
-                      key={option.key}
-                      style={[styles.periodTab, active && styles.periodTabActive]}
-                      onPress={() => setSelectedPeriod(option.key)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Text style={[styles.periodText, active && styles.periodTextActive]}>
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <View style={styles.searchRow}>
-              <Pressable
-                style={styles.searchTrigger}
-                onPress={() => openSearch(false)}
-                accessibilityRole="button"
-              >
-                <Ionicons name="search" size={20} color={theme.colors.textMuted} />
-                <View style={styles.searchCopy}>
-                  <Text style={styles.searchTitle}>Search</Text>
-                  <Text style={styles.searchSubtitle}>
-                    {searchTerm ? `“${searchTerm}”` : "Search transactions"}
+            {/* Primary Balance Display */}
+            <View style={styles.balanceCard}>
+              <View style={styles.balanceHeader}>
+                <View>
+                  <Text style={styles.balanceLabel}>Current Balance</Text>
+                  <Text style={styles.balanceValue}>
+                    {formatCurrency(summary.closingBalance, currency || "USD")}
                   </Text>
                 </View>
+                <View style={styles.changeBadge(summary.net)}>
+                  <Ionicons
+                    name={summary.net >= 0 ? "arrow-up" : "arrow-down"}
+                    size={14}
+                    color={summary.net >= 0 ? theme.colors.success : theme.colors.danger}
+                  />
+                  <Text style={styles.changeValue(summary.net)}>
+                    {formatCurrency(Math.abs(summary.net), currency || "USD")}
+                  </Text>
+                  <Text style={styles.changePercent}>
+                    {summary.percentageChange}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.metricsRow}>
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>Income</Text>
+                  <Text style={styles.metricValue(theme.colors.success)}>
+                    {formatCurrency(summary.income, currency || "USD")}
+                  </Text>
+                </View>
+                <View style={styles.metricDivider} />
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>Expenses</Text>
+                  <Text style={styles.metricValue(theme.colors.danger)}>
+                    {formatCurrency(summary.expense, currency || "USD")}
+                  </Text>
+                </View>
+                <View style={styles.metricDivider} />
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>Previous</Text>
+                  <Text style={styles.metricValue(theme.colors.text)}>
+                    {formatCurrency(summary.openingBalance, currency || "USD")}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Period Selector */}
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.periodScroll}
+              contentContainerStyle={styles.periodContent}
+            >
+              {periodOptions.map((option) => {
+                const active = option.key === selectedPeriod;
+                return (
+                  <Pressable
+                    key={option.key}
+                    style={styles.periodChip(active)}
+                    onPress={() => setSelectedPeriod(option.key)}
+                  >
+                    <Text style={styles.periodText(active)}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* Search and Filters */}
+            <View style={styles.searchContainer}>
+              <Pressable
+                style={styles.searchField}
+                onPress={() => openSearch(false)}
+              >
+                <Ionicons name="search" size={18} color={theme.colors.textMuted} />
+                <Text style={styles.searchPlaceholder}>
+                  {searchTerm || "Search transactions..."}
+                </Text>
               </Pressable>
               <Pressable
-                style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
+                style={styles.filterButton(hasActiveFilters)}
                 onPress={() => openSearch(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Open filters"
               >
                 <Ionicons
-                  name="options-outline"
-                  size={20}
+                  name="filter"
+                  size={18}
                   color={hasActiveFilters ? theme.colors.primary : theme.colors.text}
                 />
+                {hasActiveFilters && (
+                  <View style={styles.filterBadge}>
+                    <Text style={styles.filterBadgeText}>{activeFilters.length}</Text>
+                  </View>
+                )}
               </Pressable>
             </View>
 
+            {/* Active Filters */}
             {hasActiveFilters && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.activeFiltersRow}
-            >
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterChips}
+              >
                 {activeFilters.map((filter) => (
-                  <Pressable
-                    key={filter.key}
-                    style={styles.activeFilterChip}
-                    onPress={() => removeFilter(filter.type, filter.value)}
-                    accessibilityRole="button"
-                    accessibilityHint="Remove filter"
-                  >
-                    <Text style={styles.activeFilterText}>{filter.label}</Text>
-                    <Ionicons name="close" size={14} color={theme.colors.textMuted} />
-                  </Pressable>
+                  <View key={filter.key} style={styles.filterChip}>
+                    <Text style={styles.filterChipText}>{filter.label}</Text>
+                    <Pressable
+                      onPress={() => {
+                        if (filter.type === "search") setSearchTerm("");
+                        else if (filter.type === "min") setMinAmount("");
+                        else if (filter.type === "max") setMaxAmount("");
+                        else if (filter.type === "start") setStartDate(null);
+                        else if (filter.type === "end") setEndDate(null);
+                        else if (filter.type === "category" && filter.value) {
+                          setSelectedCategories(prev => prev.filter(c => c !== filter.value));
+                        }
+                      }}
+                      style={styles.filterChipClose}
+                    >
+                      <Ionicons name="close" size={12} color={theme.colors.text} />
+                    </Pressable>
+                  </View>
                 ))}
-                <Pressable
-                  style={styles.resetFiltersButton}
-                  onPress={() => {
-                    clearFilters();
-                    setFiltersExpanded(false);
-                  }}
-                >
-                  <Text style={styles.resetFiltersText}>Reset</Text>
+                <Pressable onPress={clearFilters} style={styles.clearButton}>
+                  <Text style={styles.clearButtonText}>Clear all</Text>
                 </Pressable>
               </ScrollView>
             )}
 
-            <View style={[theme.components.card, styles.summaryCard]}>
-              <View style={styles.summaryHeader}>
-                <View style={styles.summaryTitleBlock}>
-                  <Text style={styles.summaryLabel}>Ending balance</Text>
-                  <Text style={styles.summaryValue}>
-                    {formatCurrency(summary.closingBalance, currency || "USD")}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.netBadge,
-                    {
-                      backgroundColor:
-                        summary.net >= 0 ? "rgba(52,211,153,0.12)" : "rgba(251,113,133,0.12)",
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={summary.net >= 0 ? "trending-up" : "trending-down"}
-                    size={16}
-                    color={summary.net >= 0 ? theme.colors.success : theme.colors.danger}
-                  />
-                  <Text
-                    style={[
-                      styles.netBadgeText,
-                      { color: summary.net >= 0 ? theme.colors.success : theme.colors.danger },
-                    ]}
-                  >
-                    {formatCurrency(summary.net, currency || "USD", { signDisplay: "always" })}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.summaryStats}>
-                <View style={styles.summaryStat}>
-                  <Text style={styles.statLabel}>Opening balance</Text>
-                  <Text style={[styles.statValue, styles.openingBalanceValue]}>
-                    {formatCurrency(summary.openingBalance, currency || "USD")}
-                  </Text>
-                </View>
-                <View style={styles.summaryStat}>
-                  <Text style={styles.statLabel}>Income</Text>
-                  <Text style={[styles.statValue, styles.incomeText]}>
-                    {formatCurrency(summary.income, currency || "USD", { signDisplay: "always" })}
-                  </Text>
-                </View>
-                <View style={styles.summaryStat}>
-                  <Text style={styles.statLabel}>Spending</Text>
-                  <Text style={[styles.statValue, styles.expenseText]}>
-                    {formatCurrency(-summary.expense, currency || "USD", { signDisplay: "always" })}
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                style={styles.reportToggle}
-                onPress={() => setReportExpanded((prev) => !prev)}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: reportExpanded }}
+            {/* Expense Breakdown */}
+            {expenseBreakdown.length > 0 && (
+              <Pressable 
+                style={styles.breakdownCard}
+                onPress={() => setCategoriesExpanded(!categoriesExpanded)}
               >
-                <Text style={styles.reportToggleText}>
-                  {reportExpanded ? "Hide" : "View"} report for this period
-                </Text>
-                <Ionicons
-                  name={reportExpanded ? "chevron-up" : "chevron-down"}
-                  size={18}
-                  color={theme.colors.text}
-                />
-              </Pressable>
-              {reportExpanded && (
-                <View style={styles.reportCard}>
-                  <Text style={styles.reportTitle}>Category breakdown</Text>
-                  {expenseBreakdown.length ? (
-                    expenseBreakdown.map((category) => (
-                      <View key={category.category} style={styles.reportRow}>
-                        <View style={styles.reportLabelBlock}>
-                          <Text style={styles.reportCategory}>{category.category}</Text>
-                          <Text style={styles.reportAmount}>
-                            {formatCurrency(category.amount, currency || "USD")}
+                <View style={styles.breakdownHeader}>
+                  <Text style={styles.breakdownTitle}>Top Categories</Text>
+                  <Ionicons
+                    name={categoriesExpanded ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    color={theme.colors.textMuted}
+                  />
+                </View>
+                {categoriesExpanded && (
+                  <View style={styles.breakdownContent}>
+                    {expenseBreakdown.map((item) => (
+                      <View key={item.category} style={styles.breakdownRow}>
+                        <View style={styles.breakdownInfo}>
+                          <Text style={styles.breakdownCategory}>{item.category}</Text>
+                          <Text style={styles.breakdownAmount}>
+                            {formatCurrency(item.amount, currency || "USD")}
                           </Text>
                         </View>
-                        <View style={styles.reportProgressTrack}>
-                          <View
-                            style={[
-                              styles.reportProgressFill,
-                              {
-                                width: `${Math.min(100, Math.max(6, category.percentage))}%`,
-                              },
-                            ]}
-                          />
+                        <View style={styles.progressBar}>
+                          <View style={styles.progressFill(item.percentage)} />
                         </View>
-                        <Text style={styles.reportPercentage}>{category.percentage}%</Text>
+                        <Text style={styles.breakdownPercent}>{item.percentage}%</Text>
                       </View>
-                    ))
-                  ) : (
-                    <Text style={styles.reportEmpty}>
-                      No expenses logged for {periodLabel} yet.
-                    </Text>
-                  )}
-                </View>
-              )}
-            </View>
+                    ))}
+                  </View>
+                )}
+              </Pressable>
+            )}
 
+            {/* Recurring Transactions */}
             {filteredRecurring.length > 0 && (
-              <View style={[theme.components.surface, styles.recurringCard]}>
-                <View style={styles.recurringHeader}>
-                  <Text style={styles.recurringTitle}>Recurring this period</Text>
-                  <Text style={styles.recurringCaption}>{filteredRecurring.length} due</Text>
-                </View>
-                <View style={styles.recurringList}>
-                  {filteredRecurring.map((item) => (
-                    <View key={item.id} style={styles.recurringRow}>
-                      <View style={styles.recurringCopy}>
-                        <Text style={styles.recurringNote}>{item.note}</Text>
-                        <Text style={styles.recurringMeta}>
-                          {dayjs(item.nextOccurrence).format("MMM D")} •
-                          {` ${item.frequency.charAt(0).toUpperCase()}${item.frequency.slice(1)}`}
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => logRecurringTransaction(item.id)}
-                        style={styles.recurringAction}
-                        accessibilityRole="button"
-                      >
-                        <Ionicons name="download-outline" size={16} color={theme.colors.primary} />
-                        <Text style={styles.recurringActionText}>Log</Text>
-                      </Pressable>
+              <View style={styles.recurringSection}>
+                <Text style={styles.sectionTitle}>
+                  Upcoming Recurring ({filteredRecurring.length})
+                </Text>
+                {filteredRecurring.map((item) => (
+                  <View key={item.id} style={styles.recurringItem}>
+                    <View style={styles.recurringInfo}>
+                      <Text style={styles.recurringName}>{item.note}</Text>
+                      <Text style={styles.recurringDate}>
+                        {dayjs(item.nextOccurrence).format("MMM D")} • {item.frequency}
+                      </Text>
                     </View>
-                  ))}
-                </View>
+                    <Pressable
+                      onPress={() => logRecurringTransaction(item.id)}
+                      style={styles.logButton}
+                    >
+                      <Text style={styles.logButtonText}>Log</Text>
+                    </Pressable>
+                  </View>
+                ))}
               </View>
+            )}
+
+            {sections.length > 0 && (
+              <Text style={styles.transactionsTitle}>Recent Transactions</Text>
             )}
           </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Ionicons name="search-outline" size={20} color={theme.colors.textMuted} />
-            <Text style={styles.emptyTitle}>No transactions found</Text>
-            <Text style={styles.emptySubtitle}>Try adjusting your filters or logging a new one.</Text>
+            <Ionicons name="receipt-outline" size={48} color={theme.colors.textMuted} />
+            <Text style={styles.emptyTitle}>No transactions yet</Text>
+            <Text style={styles.emptyText}>
+              {hasActiveFilters 
+                ? "Try adjusting your filters" 
+                : "Start tracking your expenses"}
+            </Text>
           </View>
         }
         renderSectionHeader={({ section }) => (
-          <Text style={styles.sectionHeader}>{section.title}</Text>
-        )}
-        renderItem={({ item }) => (
-          <View style={[theme.components.surface, styles.transactionCard]}>
-            <View style={styles.transactionMain}>
-              <View
-                style={[
-                  styles.categoryAvatar,
-                  item.type === "income" ? styles.avatarIncome : styles.avatarExpense,
-                ]}
-              >
-                <Text style={styles.avatarText}>{item.category.charAt(0)}</Text>
-              </View>
-              <View style={styles.transactionCopy}>
-                <Text style={styles.transactionNote}>{item.note}</Text>
-                <Text style={styles.transactionMeta}>
-                  {item.category} • {dayjs(item.date).format("h:mm A")}
+          <View style={styles.sectionHeaderContainer}>
+            <Text style={styles.sectionHeader}>{section.title}</Text>
+            <View style={styles.sectionTotals}>
+              {section.dailyIncome > 0 && (
+                <Text style={styles.dailyIncome}>
+                  +{formatCurrency(section.dailyIncome, currency || "USD")}
                 </Text>
-              </View>
-            </View>
-            <View style={styles.transactionAmountBlock}>
-              <Text
-                style={[
-                  styles.transactionAmount,
-                  item.type === "income" ? styles.incomeText : styles.expenseText,
-                ]}
-              >
-                {item.type === "income" ? "+" : "-"}
-                {formatCurrency(item.amount, currency || "USD")}
-              </Text>
+              )}
+              {section.dailyExpense > 0 && (
+                <Text style={styles.dailyExpense}>
+                  −{formatCurrency(section.dailyExpense, currency || "USD")}
+                </Text>
+              )}
             </View>
           </View>
         )}
-        ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
-        SectionSeparatorComponent={() => <View style={styles.sectionSeparator} />}
+        renderItem={({ item }) => (
+          <View style={styles.dayCard}>
+            {item.transactions.map((transaction, index) => (
+              <View key={transaction.id}>
+                {index > 0 && <View style={styles.transactionDivider} />}
+                <Pressable style={styles.transactionItem}>
+                  <View style={styles.transactionLeft}>
+                    <View style={styles.categoryIcon(transaction.type)}>
+                      <Text style={styles.categoryInitial}>
+                        {transaction.category.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.transactionDetails}>
+                      <Text style={styles.transactionNote} numberOfLines={1}>
+                        {transaction.note}
+                      </Text>
+                      <Text style={styles.transactionMeta}>
+                        {transaction.category} • {dayjs(transaction.date).format("h:mm A")}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.transactionAmount(transaction.type)}>
+                    {transaction.type === "income" ? "+" : "−"}
+                    {formatCurrency(transaction.amount, currency || "USD")}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
 
+      {/* Search Modal */}
       <Modal
         visible={searchVisible}
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={closeSearch}
       >
-        <SafeAreaView style={styles.searchModal}>
-          <View style={styles.searchModalHeader}>
-            <Pressable
-              onPress={closeSearch}
-              style={styles.modalCloseButton}
-              accessibilityRole="button"
-              accessibilityLabel="Close search"
-            >
-              <Ionicons name="chevron-down" size={20} color={theme.colors.text} />
-              <Text style={styles.modalCloseText}>Close</Text>
+        <SafeAreaView style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <Pressable onPress={closeSearch} style={styles.modalClose}>
+              <Ionicons name="close" size={24} color={theme.colors.text} />
             </Pressable>
-            <Text style={styles.searchModalTitle}>Search for transaction</Text>
-            <Pressable
-              onPress={() => setFiltersExpanded((prev) => !prev)}
-              style={[styles.modalIconButton, filtersExpanded && styles.modalIconButtonActive]}
-              accessibilityRole="button"
-              accessibilityLabel="Toggle advanced filters"
-            >
-              <Ionicons
-                name="options-outline"
-                size={20}
-                color={filtersExpanded ? theme.colors.primary : theme.colors.text}
+            <Text style={styles.modalTitle}>Search & Filter</Text>
+            <View style={styles.modalSpacer} />
+          </View>
+
+          <View style={styles.modalContent}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={20} color={theme.colors.textMuted} />
+              <TextInput
+                value={draftSearchTerm}
+                onChangeText={setDraftSearchTerm}
+                placeholder="Search notes or categories"
+                placeholderTextColor={theme.colors.textMuted}
+                style={styles.searchInput}
+                autoFocus
               />
-            </Pressable>
-          </View>
-
-          <View style={styles.searchInputRow}>
-            <Ionicons name="search" size={18} color={theme.colors.textMuted} />
-            <TextInput
-              value={draftSearchTerm}
-              onChangeText={setDraftSearchTerm}
-              placeholder="Search by note, category, or amount"
-              placeholderTextColor={theme.colors.textMuted}
-              style={styles.searchTextInput}
-              returnKeyType="search"
-              onSubmitEditing={() => handleSearchSubmit(draftSearchTerm)}
-              autoFocus
-            />
-            {draftSearchTerm.length > 0 && (
-              <Pressable
-                onPress={() => setDraftSearchTerm("")}
-                style={styles.clearSearchButton}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-              >
-                <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
-              </Pressable>
-            )}
-          </View>
-
-          {searchHistory.length > 0 && (
-            <View style={styles.historySection}>
-              <Text style={styles.historyTitle}>Recent searches</Text>
-              {searchHistory.map((entry) => (
-                <Pressable
-                  key={entry}
-                  style={styles.historyRow}
-                  onPress={() => handleSearchSubmit(entry)}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
-                  <Text style={styles.historyText}>{entry}</Text>
-                </Pressable>
-              ))}
             </View>
-          )}
 
-          {filtersExpanded && (
-            <ScrollView
-              style={styles.filtersSheet}
-              contentContainerStyle={styles.filtersSheetContent}
-              showsVerticalScrollIndicator={false}
-              contentInsetAdjustmentBehavior="automatic"
-            >
-              <View style={styles.sheetRow}>
-                <View style={styles.sheetColumn}>
-                  <Text style={styles.sheetLabel}>Min amount</Text>
+            {filtersExpanded && (
+              <View style={styles.filters}>
+                <Text style={styles.filterSectionTitle}>Amount Range</Text>
+                <View style={styles.filterRow}>
                   <TextInput
                     value={minAmount}
                     onChangeText={setMinAmount}
                     keyboardType="numeric"
-                    placeholder="0"
+                    placeholder="Min"
                     placeholderTextColor={theme.colors.textMuted}
-                    style={styles.sheetInput}
+                    style={styles.filterInput}
                   />
-                </View>
-                <View style={styles.sheetColumn}>
-                  <Text style={styles.sheetLabel}>Max amount</Text>
+                  <Text style={styles.filterSeparator}>to</Text>
                   <TextInput
                     value={maxAmount}
                     onChangeText={setMaxAmount}
                     keyboardType="numeric"
-                    placeholder="Any"
+                    placeholder="Max"
                     placeholderTextColor={theme.colors.textMuted}
-                    style={styles.sheetInput}
+                    style={styles.filterInput}
                   />
                 </View>
-              </View>
 
-              <View style={styles.sheetRow}>
-                <View style={styles.sheetColumn}>
-                  <Text style={styles.sheetLabel}>Start date</Text>
+                <Text style={styles.filterSectionTitle}>Date Range</Text>
+                <View style={styles.filterRow}>
                   <Pressable
                     onPress={() => setShowStartPicker(true)}
-                    style={styles.sheetDateButton}
-                    accessibilityRole="button"
+                    style={styles.dateButton}
                   >
-                    <Text style={styles.sheetDateText}>
-                      {startDate ? startDate.format("MMM D, YYYY") : "Any"}
+                    <Text style={styles.dateButtonText}>
+                      {startDate ? startDate.format("MMM D") : "Start"}
                     </Text>
-                    <Ionicons name="calendar" size={16} color={theme.colors.textMuted} />
                   </Pressable>
-                </View>
-                <View style={styles.sheetColumn}>
-                  <Text style={styles.sheetLabel}>End date</Text>
+                  <Text style={styles.filterSeparator}>to</Text>
                   <Pressable
                     onPress={() => setShowEndPicker(true)}
-                    style={styles.sheetDateButton}
-                    accessibilityRole="button"
+                    style={styles.dateButton}
                   >
-                    <Text style={styles.sheetDateText}>
-                      {endDate ? endDate.format("MMM D, YYYY") : "Any"}
+                    <Text style={styles.dateButtonText}>
+                      {endDate ? endDate.format("MMM D") : "End"}
                     </Text>
-                    <Ionicons name="calendar" size={16} color={theme.colors.textMuted} />
                   </Pressable>
                 </View>
-              </View>
 
-              <View style={styles.sheetColumn}>
-                <Text style={styles.sheetLabel}>Categories</Text>
-                <View style={styles.sheetCategoryRow}>
+                <Text style={styles.filterSectionTitle}>Categories</Text>
+                <View style={styles.categoryGrid}>
                   {categories.map((category) => {
-                    const active = selectedCategories.includes(category);
+                    const selected = selectedCategories.includes(category);
                     return (
                       <Pressable
                         key={category}
                         onPress={() => toggleCategory(category)}
-                        style={[styles.sheetCategoryChip, active && styles.sheetCategoryChipActive]}
+                        style={styles.categoryOption(selected)}
                       >
-                        <Text
-                          style={[styles.sheetCategoryText, active && styles.sheetCategoryTextActive]}
-                        >
+                        <Text style={styles.categoryOptionText(selected)}>
                           {category}
                         </Text>
                       </Pressable>
@@ -762,25 +668,32 @@ export default function TransactionsScreen() {
                   })}
                 </View>
               </View>
-            </ScrollView>
-          )}
+            )}
 
-          <View style={styles.searchModalFooter}>
             <Pressable
-              style={styles.modalSecondaryButton}
-              onPress={() => {
-                clearFilters();
-                setDraftSearchTerm("");
-                setFiltersExpanded(true);
-              }}
+              onPress={() => setFiltersExpanded(!filtersExpanded)}
+              style={styles.toggleFilters}
             >
-              <Text style={styles.modalSecondaryText}>Clear all</Text>
+              <Text style={styles.toggleFiltersText}>
+                {filtersExpanded ? "Hide" : "Show"} advanced filters
+              </Text>
+              <Ionicons
+                name={filtersExpanded ? "chevron-up" : "chevron-down"}
+                size={16}
+                color={theme.colors.primary}
+              />
+            </Pressable>
+          </View>
+
+          <View style={styles.modalFooter}>
+            <Pressable onPress={clearFilters} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>Reset</Text>
             </Pressable>
             <Pressable
-              style={styles.modalPrimaryButton}
               onPress={() => handleSearchSubmit(draftSearchTerm)}
+              style={styles.primaryButton}
             >
-              <Text style={styles.modalPrimaryText}>Search</Text>
+              <Text style={styles.primaryButtonText}>Apply</Text>
             </Pressable>
           </View>
         </SafeAreaView>
@@ -792,12 +705,8 @@ export default function TransactionsScreen() {
           mode="date"
           display={Platform.OS === "ios" ? "inline" : "default"}
           onChange={(_, selectedDate) => {
-            if (selectedDate) {
-              setStartDate(dayjs(selectedDate));
-            }
-            if (Platform.OS !== "ios") {
-              setShowStartPicker(false);
-            }
+            if (selectedDate) setStartDate(dayjs(selectedDate));
+            if (Platform.OS !== "ios") setShowStartPicker(false);
           }}
         />
       )}
@@ -808,12 +717,8 @@ export default function TransactionsScreen() {
           mode="date"
           display={Platform.OS === "ios" ? "inline" : "default"}
           onChange={(_, selectedDate) => {
-            if (selectedDate) {
-              setEndDate(dayjs(selectedDate));
-            }
-            if (Platform.OS !== "ios") {
-              setShowEndPicker(false);
-            }
+            if (selectedDate) setEndDate(dayjs(selectedDate));
+            if (Platform.OS !== "ios") setShowEndPicker(false);
           }}
         />
       )}
@@ -821,554 +726,578 @@ export default function TransactionsScreen() {
   );
 }
 
-const createStyles = (
-  theme: ReturnType<typeof useAppTheme>,
-  insets: ReturnType<typeof useSafeAreaInsets>,
-) =>
+const createStyles = (theme: any, insets: any) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
       backgroundColor: theme.colors.background,
     },
     listContent: {
-      paddingHorizontal: theme.spacing.lg,
-      paddingTop: theme.spacing.lg,
-      paddingBottom: theme.spacing.xl + insets.bottom,
-      gap: theme.spacing.lg,
+      paddingBottom: 100,
     },
     header: {
-      gap: theme.spacing.md,
+      paddingHorizontal: 16,
+      paddingTop: 16,
     },
-    headingBlock: {
-      gap: theme.spacing.xs,
-    },
-    title: {
-      ...theme.typography.title,
-    },
-    subtitle: {
-      ...theme.typography.subtitle,
-    },
-    periodTabs: {
+    
+    // Balance Card
+    balanceCard: {
       backgroundColor: theme.colors.surface,
-      padding: theme.spacing.xs,
-      borderRadius: 999,
-      alignSelf: "stretch",
-    },
-    periodTabsContent: {
-      flexDirection: "row",
-      gap: theme.spacing.sm,
-      alignItems: "center",
-      paddingHorizontal: theme.spacing.xs,
-    },
-    periodTab: {
-      paddingHorizontal: theme.spacing.lg,
-      paddingVertical: theme.spacing.sm,
-      borderRadius: 999,
-    },
-    periodTabActive: {
-      backgroundColor: theme.colors.primary,
-    },
-    periodText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: theme.colors.textMuted,
-    },
-    periodTextActive: {
-      color: theme.colors.text,
-    },
-    searchRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing.sm,
-    },
-    searchTrigger: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      borderRadius: theme.radii.lg,
-      backgroundColor: theme.colors.surface,
-    },
-    searchCopy: {
-      flex: 1,
-      gap: 2,
-    },
-    searchTitle: {
-      ...theme.typography.subtitle,
-      fontSize: 12,
-      textTransform: "uppercase",
-      letterSpacing: 1.2,
-      color: theme.colors.textMuted,
-    },
-    searchSubtitle: {
-      ...theme.typography.body,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    filterButton: {
-      width: 48,
-      height: 48,
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-    },
-    filterButtonActive: {
-      borderColor: theme.colors.primary,
-      backgroundColor: theme.colors.primaryMuted,
-    },
-    activeFiltersRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing.sm,
-      paddingTop: theme.spacing.sm,
-    },
-    activeFilterChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.xs,
-      borderRadius: 999,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-    },
-    activeFilterText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    resetFiltersButton: {
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.xs,
-      borderRadius: 999,
-      backgroundColor: theme.colors.primaryMuted,
-    },
-    resetFiltersText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: theme.colors.primary,
-    },
-    searchModal: {
-      flex: 1,
-      backgroundColor: theme.colors.background,
-      paddingHorizontal: theme.spacing.lg,
-      paddingBottom: theme.spacing.xl + insets.bottom,
-      gap: theme.spacing.lg,
-    },
-    searchModalHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: theme.spacing.sm,
-      paddingTop: theme.spacing.lg,
-    },
-    modalCloseButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    modalCloseText: {
-      ...theme.typography.subtitle,
-      fontSize: 14,
-      color: theme.colors.text,
-    },
-    searchModalTitle: {
-      ...theme.typography.subtitle,
-      fontSize: 16,
-      fontWeight: "700",
-      color: theme.colors.text,
-      flex: 1,
-      textAlign: "center",
-    },
-    modalIconButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-    },
-    modalIconButtonActive: {
-      borderColor: theme.colors.primary,
-      backgroundColor: theme.colors.primaryMuted,
-    },
-    searchInputRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-      borderRadius: theme.radii.md,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-    },
-    searchTextInput: {
-      flex: 1,
-      color: theme.colors.text,
-      fontSize: 16,
-    },
-    clearSearchButton: {
-      padding: 4,
-    },
-    historySection: {
-      gap: theme.spacing.sm,
-    },
-    historyTitle: {
-      ...theme.typography.label,
-      color: theme.colors.textMuted,
-    },
-    historyRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-      borderRadius: theme.radii.md,
-      backgroundColor: theme.colors.surface,
-    },
-    historyText: {
-      ...theme.typography.body,
-      fontWeight: "600",
-    },
-    filtersSheet: {
-      flex: 1,
-    },
-    filtersSheetContent: {
-      gap: theme.spacing.lg,
-      paddingBottom: theme.spacing.xl + insets.bottom,
-    },
-    sheetRow: {
-      flexDirection: "row",
-      gap: theme.spacing.md,
-    },
-    sheetColumn: {
-      flex: 1,
-      gap: theme.spacing.xs,
-    },
-    sheetLabel: {
-      ...theme.typography.subtitle,
-      fontSize: 12,
-      textTransform: "uppercase",
-      letterSpacing: 1.2,
-    },
-    sheetInput: {
-      ...theme.components.input,
-      fontSize: 14,
-    },
-    sheetDateButton: {
-      ...theme.components.input,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    sheetDateText: {
-      fontSize: 14,
-      color: theme.colors.text,
-    },
-    sheetCategoryRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing.sm,
-    },
-    sheetCategoryChip: {
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-      borderRadius: theme.radii.pill,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.surface,
-    },
-    sheetCategoryChipActive: {
-      borderColor: theme.colors.primary,
-      backgroundColor: theme.colors.primaryMuted,
-    },
-    sheetCategoryText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    sheetCategoryTextActive: {
-      color: theme.colors.primary,
-    },
-    searchModalFooter: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: theme.spacing.md,
-    },
-    modalSecondaryButton: {
-      flex: 1,
-      paddingVertical: theme.spacing.md,
-      borderRadius: theme.radii.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    modalSecondaryText: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    modalPrimaryButton: {
-      flex: 1,
-      ...theme.components.buttonPrimary,
-    },
-    modalPrimaryText: {
-      ...theme.components.buttonPrimaryText,
-    },
-    sectionHeader: {
-      ...theme.typography.label,
-      marginBottom: theme.spacing.xs,
-    },
-    summaryCard: {
-      gap: theme.spacing.md,
-    },
-    summaryHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-end",
-    },
-    summaryTitleBlock: {
-      gap: 6,
-    },
-    summaryLabel: {
-      ...theme.typography.subtitle,
-      fontSize: 12,
-      textTransform: "uppercase",
-      letterSpacing: 1.2,
-    },
-    summaryValue: {
-      fontSize: 26,
-      fontWeight: "700",
-      color: theme.colors.text,
-    },
-    netBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 999,
-    },
-    netBadgeText: {
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    summaryStats: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-      gap: theme.spacing.sm,
-    },
-    summaryStat: {
-      flex: 1,
-      gap: theme.spacing.xs,
-      alignItems: "flex-start",
-    },
-    statLabel: {
-      ...theme.typography.subtitle,
-      fontSize: 11,
-      textTransform: "uppercase",
-      letterSpacing: 1,
-      textAlign: "left",
-    },
-    statValue: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    openingBalanceValue: {
-      color: theme.colors.text,
-    },
-    incomeText: {
-      color: theme.colors.success,
-    },
-    expenseText: {
-      color: theme.colors.danger,
-    },
-    reportToggle: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    reportToggleText: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    reportCard: {
-      gap: theme.spacing.md,
-    },
-    reportTitle: {
-      ...theme.typography.subtitle,
-      fontSize: 13,
-    },
-    reportRow: {
-      gap: theme.spacing.xs,
-    },
-    reportLabelBlock: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    reportCategory: {
-      ...theme.typography.body,
-      fontWeight: "600",
-    },
-    reportAmount: {
-      ...theme.typography.subtitle,
-      fontSize: 14,
-    },
-    reportProgressTrack: {
-      height: 6,
-      backgroundColor: theme.colors.border,
-      borderRadius: 999,
-      overflow: "hidden",
-    },
-    reportProgressFill: {
-      height: "100%",
-      borderRadius: 999,
-      backgroundColor: theme.colors.primary,
-    },
-    reportPercentage: {
-      ...theme.typography.subtitle,
-      fontSize: 12,
-    },
-    reportEmpty: {
-      ...theme.typography.subtitle,
-      fontSize: 13,
-    },
-    transactionCard: {
-      gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.lg,
-      paddingVertical: theme.spacing.md,
-    },
-    transactionMain: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing.sm,
-    },
-    categoryAvatar: {
-      width: 40,
-      height: 40,
       borderRadius: 20,
-      alignItems: "center",
-      justifyContent: "center",
+      padding: 20,
+      marginBottom: 16,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2,
     },
-    avatarIncome: {
-      backgroundColor: `${theme.colors.success}33`,
+    balanceHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 20,
     },
-    avatarExpense: {
-      backgroundColor: `${theme.colors.danger}33`,
+    balanceLabel: {
+      fontSize: 12,
+      fontWeight: "500",
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 4,
     },
-    avatarText: {
-      fontSize: 18,
+    balanceValue: {
+      fontSize: 32,
       fontWeight: "700",
       color: theme.colors.text,
     },
-    transactionCopy: {
-      flex: 1,
-      gap: 2,
-    },
-    transactionNote: {
-      ...theme.typography.body,
-      fontWeight: "600",
-    },
-    transactionMeta: {
-      ...theme.typography.subtitle,
-      fontSize: 11,
-    },
-    transactionAmountBlock: {
-      justifyContent: "center",
-      alignItems: "flex-end",
-    },
-    transactionAmount: {
-      fontSize: 15,
-      fontWeight: "600",
-      textAlign: "right",
-    },
-    itemSeparator: {
-      height: theme.spacing.xs,
-    },
-    sectionSeparator: {
-      height: theme.spacing.md,
-    },
-    emptyState: {
-      alignItems: "center",
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.xl,
-    },
-    emptyTitle: {
-      ...theme.typography.title,
-      fontSize: 20,
-    },
-    emptySubtitle: {
-      ...theme.typography.subtitle,
-      fontSize: 14,
-      textAlign: "center",
-    },
-    recurringCard: {
-      gap: theme.spacing.md,
-    },
-    recurringHeader: {
+    changeBadge: (positive: number) => ({
       flexDirection: "row",
-      justifyContent: "space-between",
       alignItems: "center",
-    },
-    recurringTitle: {
-      ...theme.typography.subtitle,
-      fontSize: 13,
-      textTransform: "uppercase",
-      letterSpacing: 1.2,
-    },
-    recurringCaption: {
-      ...theme.typography.subtitle,
-      fontSize: 12,
-    },
-    recurringList: {
-      gap: theme.spacing.sm,
-    },
-    recurringRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: theme.spacing.md,
-    },
-    recurringCopy: {
-      flex: 1,
       gap: 4,
-    },
-    recurringNote: {
-      ...theme.typography.body,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 12,
+      backgroundColor: positive >= 0 
+        ? `${theme.colors.success}15` 
+        : `${theme.colors.danger}15`,
+    }),
+    changeValue: (positive: number) => ({
+      fontSize: 14,
       fontWeight: "600",
-    },
-    recurringMeta: {
-      ...theme.typography.subtitle,
+      color: positive >= 0 ? theme.colors.success : theme.colors.danger,
+    }),
+    changePercent: {
       fontSize: 12,
+      fontWeight: "500",
+      color: theme.colors.textMuted,
     },
-    recurringAction: {
+    metricsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    metric: {
+      flex: 1,
+      alignItems: "center",
+    },
+    metricLabel: {
+      fontSize: 11,
+      fontWeight: "500",
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    metricValue: (color: string) => ({
+      fontSize: 16,
+      fontWeight: "600",
+      color,
+    }),
+    metricDivider: {
+      width: 1,
+      height: 32,
+      backgroundColor: theme.colors.border,
+    },
+    
+    // Period Selector
+    periodScroll: {
+      marginBottom: 16,
+      marginHorizontal: -16,
+    },
+    periodContent: {
+      paddingHorizontal: 16,
+      gap: 8,
+    },
+    periodChip: (active: boolean) => ({
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+      borderWidth: 1,
+      borderColor: active ? theme.colors.primary : theme.colors.border,
+    }),
+    periodText: (active: boolean) => ({
+      fontSize: 13,
+      fontWeight: "600",
+      color: active ? "#fff" : theme.colors.text,
+    }),
+    
+    // Search and Filters
+    searchContainer: {
+      flexDirection: "row",
+      gap: 12,
+      marginBottom: 16,
+    },
+    searchField: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    searchPlaceholder: {
+      fontSize: 15,
+      color: theme.colors.textMuted,
+    },
+    filterButton: (active: boolean) => ({
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+      borderWidth: 1,
+      borderColor: active ? theme.colors.primary : theme.colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+    }),
+    filterBadge: {
+      position: "absolute",
+      top: -4,
+      right: -4,
+      backgroundColor: theme.colors.primary,
+      borderRadius: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    filterBadgeText: {
+      fontSize: 10,
+      fontWeight: "700",
+      color: "#fff",
+    },
+    
+    // Filter Chips
+    filterChips: {
+      flexDirection: "row",
+      gap: 8,
+      paddingVertical: 8,
+    },
+    filterChip: {
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
       paddingHorizontal: 12,
       paddingVertical: 6,
-      borderRadius: 999,
+      borderRadius: 16,
+      backgroundColor: theme.colors.primaryMuted,
       borderWidth: 1,
       borderColor: theme.colors.primary,
     },
-    recurringActionText: {
-      fontSize: 13,
+    filterChipText: {
+      fontSize: 12,
       fontWeight: "600",
       color: theme.colors.primary,
+    },
+    filterChipClose: {
+      padding: 2,
+    },
+    clearButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surface,
+    },
+    clearButtonText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    
+    // Breakdown Card
+    breakdownCard: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+    },
+    breakdownHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    breakdownTitle: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    breakdownContent: {
+      marginTop: 12,
+    },
+    breakdownRow: {
+      marginBottom: 12,
+    },
+    breakdownInfo: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 6,
+    },
+    breakdownCategory: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    breakdownAmount: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    progressBar: {
+      height: 4,
+      backgroundColor: theme.colors.border,
+      borderRadius: 2,
+      overflow: "hidden",
+      marginBottom: 4,
+    },
+    progressFill: (percentage: number) => ({
+      height: "100%",
+      width: `${percentage}%`,
+      backgroundColor: theme.colors.primary,
+      borderRadius: 2,
+    }),
+    breakdownPercent: {
+      fontSize: 11,
+      color: theme.colors.textMuted,
+    },
+    
+    // Recurring Section
+    recurringSection: {
+      marginBottom: 24,
+    },
+    sectionTitle: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 12,
+    },
+    recurringItem: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: theme.colors.surface,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 8,
+    },
+    recurringInfo: {
+      flex: 1,
+    },
+    recurringName: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.colors.text,
+      marginBottom: 2,
+    },
+    recurringDate: {
+      fontSize: 12,
+      color: theme.colors.textMuted,
+    },
+    logButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: theme.colors.primary,
+    },
+    logButtonText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: "#fff",
+    },
+    
+    // Transactions List
+    transactionsTitle: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 8,
+      marginTop: 8,
+    },
+    sectionHeaderContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    sectionHeader: {
+      fontSize: 11,
+      fontWeight: "500",
+      color: theme.colors.textMuted,
+    },
+    sectionTotals: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    dailyIncome: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: theme.colors.success,
+    },
+    dailyExpense: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: theme.colors.danger,
+    },
+    dayCard: {
+      backgroundColor: theme.colors.surface,
+      marginHorizontal: 16,
+      borderRadius: 12,
+      overflow: "hidden",
+    },
+    transactionItem: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: 12,
+    },
+    transactionDivider: {
+      height: 1,
+      backgroundColor: theme.colors.border,
+      marginHorizontal: 12,
+    },
+    transactionLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      flex: 1,
+    },
+    categoryIcon: (type: string) => ({
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: type === "income" 
+        ? `${theme.colors.success}20` 
+        : `${theme.colors.danger}20`,
+      alignItems: "center",
+      justifyContent: "center",
+    }),
+    categoryInitial: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    transactionDetails: {
+      flex: 1,
+    },
+    transactionNote: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.colors.text,
+      marginBottom: 2,
+    },
+    transactionMeta: {
+      fontSize: 11,
+      color: theme.colors.textMuted,
+    },
+    transactionAmount: (type: string) => ({
+      fontSize: 15,
+      fontWeight: "700",
+      color: type === "income" ? theme.colors.success : theme.colors.danger,
+    }),
+    separator: {
+      height: 8,
+    },
+    
+    // Empty State
+    emptyState: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 60,
+    },
+    emptyTitle: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: theme.colors.text,
+      marginTop: 16,
+      marginBottom: 4,
+    },
+    emptyText: {
+      fontSize: 14,
+      color: theme.colors.textMuted,
+    },
+    
+    // Modal
+    modal: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    modalClose: {
+      padding: 4,
+    },
+    modalTitle: {
+      fontSize: 17,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    modalSpacer: {
+      width: 32,
+    },
+    modalContent: {
+      flex: 1,
+      padding: 16,
+    },
+    searchInputContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      marginBottom: 16,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 16,
+      color: theme.colors.text,
+    },
+    filters: {
+      gap: 16,
+    },
+    filterSectionTitle: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 8,
+    },
+    filterRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 16,
+    },
+    filterInput: {
+      flex: 1,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      fontSize: 15,
+      color: theme.colors.text,
+    },
+    filterSeparator: {
+      fontSize: 12,
+      color: theme.colors.textMuted,
+    },
+    dateButton: {
+      flex: 1,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      alignItems: "center",
+    },
+    dateButtonText: {
+      fontSize: 15,
+      color: theme.colors.text,
+    },
+    categoryGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    categoryOption: (selected: boolean) => ({
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
+      borderWidth: 1,
+      borderColor: selected ? theme.colors.primary : theme.colors.border,
+    }),
+    categoryOptionText: (selected: boolean) => ({
+      fontSize: 13,
+      fontWeight: "600",
+      color: selected ? "#fff" : theme.colors.text,
+    }),
+    toggleFilters: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 12,
+    },
+    toggleFiltersText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    modalFooter: {
+      flexDirection: "row",
+      gap: 12,
+      padding: 16,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
+    secondaryButton: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      alignItems: "center",
+    },
+    secondaryButtonText: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    primaryButton: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 12,
+      backgroundColor: theme.colors.primary,
+      alignItems: "center",
+    },
+    primaryButtonText: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: "#fff",
     },
   });
