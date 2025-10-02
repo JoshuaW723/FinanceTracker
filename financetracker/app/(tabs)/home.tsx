@@ -215,7 +215,7 @@ export default function HomeScreen() {
             return {
               label: target.format("MMM"),
               value: spent,
-              hint: target.format("MMMM YYYY"),
+              hint: target.format("MMM"),
             };
           })
         : [];

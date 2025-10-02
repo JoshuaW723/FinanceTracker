@@ -22,6 +22,7 @@ interface SpendingChartProps {
   data: SpendingPoint[];
   style?: ViewStyle;
   formatValue?: (value: number) => string;
+  onActiveChange?: (point: SpendingPoint | null) => void;
 }
 
 interface SpendingLineChartProps extends SpendingChartProps {
@@ -44,13 +45,22 @@ const buildPath = (points: { x: number; y: number }[]) => {
     .join(" ");
 };
 
-const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: SpendingLineChartProps) => {
+const SpendingLineChartComponent = ({
+  data,
+  style,
+  comparison,
+  formatValue,
+  onActiveChange,
+}: SpendingLineChartProps) => {
   const theme = useAppTheme();
   const [containerWidth, setContainerWidth] = useState(MIN_CHART_WIDTH);
-  const [activeIndex, setActiveIndex] = useState(() => (data.length ? data.length - 1 : 0));
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const chartWidth = Math.max(containerWidth, MIN_CHART_WIDTH);
   const usableHeight = CHART_HEIGHT - VERTICAL_PADDING * 2;
   const baseLineY = CHART_HEIGHT - VERTICAL_PADDING;
+  const handleRelease = useCallback(() => {
+    setActiveIndex(null);
+  }, []);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -63,13 +73,21 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
   );
 
   useEffect(() => {
-    if (!data.length) {
-      setActiveIndex(0);
+    setActiveIndex(null);
+  }, [data.length]);
+
+  useEffect(() => {
+    if (!onActiveChange) {
       return;
     }
 
-    setActiveIndex((previous) => Math.min(previous, data.length - 1));
-  }, [data]);
+    if (activeIndex === null) {
+      onActiveChange(null);
+      return;
+    }
+
+    onActiveChange(data[activeIndex] ?? null);
+  }, [activeIndex, data, onActiveChange]);
 
   const {
     primaryPath,
@@ -128,14 +146,20 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
     };
   }, [baseLineY, chartWidth, comparison, data, usableHeight]);
 
-  const activePoint = primaryPoints[activeIndex];
-  const activeComparison = comparisonPoints[activeIndex];
+  const activePoint = activeIndex !== null ? primaryPoints[activeIndex] : undefined;
+  const activeComparison =
+    activeIndex !== null ? comparisonPoints[activeIndex] : undefined;
   const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
   const format = formatValue ?? ((value: number) => `${value}`);
 
   return (
-    <View style={[{ width: "100%" }, style]} onLayout={handleLayout}>
-      {activePoint && (
+    <View
+      style={[{ width: "100%" }, style]}
+      onLayout={handleLayout}
+      onTouchEnd={handleRelease}
+      onTouchCancel={handleRelease}
+    >
+      {activePoint ? (
         <View
           pointerEvents="none"
           style={[
@@ -149,12 +173,12 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
           <Text style={[styles.tooltipTitle, { color: theme.colors.text }]}>Day {activeLabel}</Text>
           <Text style={[styles.tooltipValue, { color: theme.colors.primary }]}>{format(activePoint.value)}</Text>
           {activeComparison ? (
-            <Text style={[styles.tooltipCaption, { color: theme.colors.textMuted }]}> 
+            <Text style={[styles.tooltipCaption, { color: theme.colors.textMuted }]}>
               Last month: {format(activeComparison.value)}
             </Text>
           ) : null}
         </View>
-      )}
+      ) : null}
       <Svg width={chartWidth} height={CHART_HEIGHT} viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}>
         <Defs>
           <LinearGradient id="spendingLineGradient" x1="0" x2="0" y1="0" y2="1">
@@ -259,7 +283,8 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
               fill={theme.colors.primary}
               stroke={theme.colors.background}
               strokeWidth={2}
-              onPress={() => setActiveIndex(index)}
+              onPressIn={() => setActiveIndex(index)}
+              onPressOut={handleRelease}
             />
           </Fragment>
         ))}
@@ -276,7 +301,8 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
               width={rectWidth}
               height={CHART_HEIGHT}
               fill="transparent"
-              onPress={() => setActiveIndex(index)}
+              onPressIn={() => setActiveIndex(index)}
+              onPressOut={handleRelease}
             />
           );
         })}
@@ -285,12 +311,15 @@ const SpendingLineChartComponent = ({ data, style, comparison, formatValue }: Sp
   );
 };
 
-const SpendingBarChartComponent = ({ data, style, formatValue }: SpendingChartProps) => {
+const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }: SpendingChartProps) => {
   const theme = useAppTheme();
   const [containerWidth, setContainerWidth] = useState(MIN_CHART_WIDTH);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const chartWidth = Math.max(containerWidth, MIN_CHART_WIDTH);
   const format = formatValue ?? ((value: number) => `${value}`);
+  const handleRelease = useCallback(() => {
+    setActiveIndex(null);
+  }, []);
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -316,6 +345,19 @@ const SpendingBarChartComponent = ({ data, style, formatValue }: SpendingChartPr
       return Math.min(previous, data.length - 1);
     });
   }, [data]);
+
+  useEffect(() => {
+    if (!onActiveChange) {
+      return;
+    }
+
+    if (activeIndex === null) {
+      onActiveChange(null);
+      return;
+    }
+
+    onActiveChange(data[activeIndex] ?? null);
+  }, [activeIndex, data, onActiveChange]);
 
   const bars = useMemo(() => {
     if (!data.length) {
@@ -357,7 +399,12 @@ const SpendingBarChartComponent = ({ data, style, formatValue }: SpendingChartPr
   const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
 
   return (
-    <View style={[{ width: "100%" }, style]} onLayout={handleLayout}>
+    <View
+      style={[{ width: "100%" }, style]}
+      onLayout={handleLayout}
+      onTouchEnd={handleRelease}
+      onTouchCancel={handleRelease}
+    >
       {activePoint ? (
         <View
           pointerEvents="none"
@@ -395,7 +442,8 @@ const SpendingBarChartComponent = ({ data, style, formatValue }: SpendingChartPr
             rx={8}
             fill={theme.colors.primary}
             opacity={activeIndex === index ? 1 : 0.7}
-            onPress={() => setActiveIndex(index)}
+            onPressIn={() => setActiveIndex(index)}
+            onPressOut={handleRelease}
           />
         ))}
 
@@ -407,7 +455,8 @@ const SpendingBarChartComponent = ({ data, style, formatValue }: SpendingChartPr
             width={bar.width}
             height={CHART_HEIGHT - VERTICAL_PADDING}
             fill="transparent"
-            onPress={() => setActiveIndex(index)}
+            onPressIn={() => setActiveIndex(index)}
+            onPressOut={handleRelease}
           />
         ))}
 
@@ -432,12 +481,13 @@ const styles = StyleSheet.create({
   tooltip: {
     position: "absolute",
     top: 8,
-    left: 12,
+    right: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
     gap: 2,
+    minWidth: 120,
   },
   tooltipTitle: {
     fontSize: 12,
