@@ -1,5 +1,12 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useState } from "react";
-import { LayoutChangeEvent, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  GestureResponderEvent,
+  LayoutChangeEvent,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
+} from "react-native";
 import Svg, {
   Circle,
   Defs,
@@ -55,11 +62,22 @@ const SpendingLineChartComponent = ({
   const theme = useAppTheme();
   const [containerWidth, setContainerWidth] = useState(MIN_CHART_WIDTH);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const touchActiveRef = useRef(false);
   const chartWidth = Math.max(containerWidth, MIN_CHART_WIDTH);
   const usableHeight = CHART_HEIGHT - VERTICAL_PADDING * 2;
   const baseLineY = CHART_HEIGHT - VERTICAL_PADDING;
   const handleRelease = useCallback(() => {
+    touchActiveRef.current = false;
     setActiveIndex(null);
+  }, []);
+
+  const extractTouchX = useCallback((event: GestureResponderEvent) => {
+    const primaryTouch = event.nativeEvent.touches?.[0];
+    if (primaryTouch && typeof primaryTouch.locationX === "number") {
+      return primaryTouch.locationX;
+    }
+
+    return event.nativeEvent.locationX;
   }, []);
 
   const handleLayout = useCallback(
@@ -89,14 +107,7 @@ const SpendingLineChartComponent = ({
     onActiveChange(data[activeIndex] ?? null);
   }, [activeIndex, data, onActiveChange]);
 
-  const {
-    primaryPath,
-    primaryPoints,
-    comparisonPath,
-    comparisonPoints,
-    areaPath,
-    step,
-  } = useMemo(() => {
+  const { primaryPath, primaryPoints, comparisonPath, comparisonPoints, areaPath } = useMemo(() => {
     if (!data.length) {
       return {
         primaryPath: "",
@@ -104,7 +115,6 @@ const SpendingLineChartComponent = ({
         comparisonPath: "",
         comparisonPoints: [] as (SpendingPoint & { x: number; y: number })[],
         areaPath: "",
-        step: chartWidth,
       };
     }
 
@@ -142,7 +152,6 @@ const SpendingLineChartComponent = ({
       primaryPoints: primaryPointsMeta,
       comparisonPoints: comparisonPointsMeta,
       areaPath: areaPathString,
-      step: stepValue,
     };
   }, [baseLineY, chartWidth, comparison, data, usableHeight]);
 
@@ -152,10 +161,54 @@ const SpendingLineChartComponent = ({
   const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
   const format = formatValue ?? ((value: number) => `${value}`);
 
+  const updateActiveIndexFromX = useCallback(
+    (x: number | undefined) => {
+      if (typeof x !== "number" || !primaryPoints.length) {
+        return;
+      }
+
+      const clampedX = Math.max(0, Math.min(chartWidth, x));
+      let nextIndex = 0;
+      let smallestDistance = Number.POSITIVE_INFINITY;
+
+      primaryPoints.forEach((point, index) => {
+        const distance = Math.abs(point.x - clampedX);
+        if (distance < smallestDistance) {
+          smallestDistance = distance;
+          nextIndex = index;
+        }
+      });
+
+      setActiveIndex((previous) => (previous === nextIndex ? previous : nextIndex));
+    },
+    [chartWidth, primaryPoints],
+  );
+
+  const handleTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      touchActiveRef.current = true;
+      updateActiveIndexFromX(extractTouchX(event));
+    },
+    [extractTouchX, updateActiveIndexFromX],
+  );
+
+  const handleTouchMove = useCallback(
+    (event: GestureResponderEvent) => {
+      if (!touchActiveRef.current) {
+        return;
+      }
+
+      updateActiveIndexFromX(extractTouchX(event));
+    },
+    [extractTouchX, updateActiveIndexFromX],
+  );
+
   return (
     <View
       style={[{ width: "100%" }, style]}
       onLayout={handleLayout}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleRelease}
       onTouchCancel={handleRelease}
     >
@@ -283,29 +336,10 @@ const SpendingLineChartComponent = ({
               fill={theme.colors.primary}
               stroke={theme.colors.background}
               strokeWidth={2}
-              onPressIn={() => setActiveIndex(index)}
-              onPressOut={handleRelease}
             />
           </Fragment>
         ))}
 
-        {primaryPoints.map((point, index) => {
-          const rectX = Math.max(0, point.x - step / 2);
-          const rectWidth = Math.min(step || chartWidth, chartWidth - rectX);
-
-          return (
-            <Rect
-              key={`hit-${index}`}
-              x={rectX}
-              y={0}
-              width={rectWidth}
-              height={CHART_HEIGHT}
-              fill="transparent"
-              onPressIn={() => setActiveIndex(index)}
-              onPressOut={handleRelease}
-            />
-          );
-        })}
       </Svg>
     </View>
   );
@@ -315,10 +349,21 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
   const theme = useAppTheme();
   const [containerWidth, setContainerWidth] = useState(MIN_CHART_WIDTH);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const touchActiveRef = useRef(false);
   const chartWidth = Math.max(containerWidth, MIN_CHART_WIDTH);
   const format = formatValue ?? ((value: number) => `${value}`);
   const handleRelease = useCallback(() => {
+    touchActiveRef.current = false;
     setActiveIndex(null);
+  }, []);
+
+  const extractTouchX = useCallback((event: GestureResponderEvent) => {
+    const primaryTouch = event.nativeEvent.touches?.[0];
+    if (primaryTouch && typeof primaryTouch.locationX === "number") {
+      return primaryTouch.locationX;
+    }
+
+    return event.nativeEvent.locationX;
   }, []);
 
   const handleLayout = useCallback(
@@ -398,10 +443,59 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
   const activePoint = activeIndex !== null ? bars[activeIndex] : undefined;
   const activeLabel = activePoint?.hint ?? activePoint?.label ?? "";
 
+  const updateActiveIndexFromX = useCallback(
+    (x: number | undefined) => {
+      if (typeof x !== "number" || !bars.length) {
+        return;
+      }
+
+      const clampedX = Math.max(0, Math.min(chartWidth, x));
+      let nextIndex = bars.findIndex((bar) => clampedX >= bar.x && clampedX <= bar.x + bar.width);
+
+      if (nextIndex === -1) {
+        let smallestDistance = Number.POSITIVE_INFINITY;
+        bars.forEach((bar, index) => {
+          const center = bar.x + bar.width / 2;
+          const distance = Math.abs(center - clampedX);
+          if (distance < smallestDistance) {
+            smallestDistance = distance;
+            nextIndex = index;
+          }
+        });
+      }
+
+      if (nextIndex !== -1) {
+        setActiveIndex((previous) => (previous === nextIndex ? previous : nextIndex));
+      }
+    },
+    [bars, chartWidth],
+  );
+
+  const handleTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      touchActiveRef.current = true;
+      updateActiveIndexFromX(extractTouchX(event));
+    },
+    [extractTouchX, updateActiveIndexFromX],
+  );
+
+  const handleTouchMove = useCallback(
+    (event: GestureResponderEvent) => {
+      if (!touchActiveRef.current) {
+        return;
+      }
+
+      updateActiveIndexFromX(extractTouchX(event));
+    },
+    [extractTouchX, updateActiveIndexFromX],
+  );
+
   return (
     <View
       style={[{ width: "100%" }, style]}
       onLayout={handleLayout}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleRelease}
       onTouchCancel={handleRelease}
     >
@@ -442,21 +536,6 @@ const SpendingBarChartComponent = ({ data, style, formatValue, onActiveChange }:
             rx={8}
             fill={theme.colors.primary}
             opacity={activeIndex === index ? 1 : 0.7}
-            onPressIn={() => setActiveIndex(index)}
-            onPressOut={handleRelease}
-          />
-        ))}
-
-        {bars.map((bar, index) => (
-          <Rect
-            key={`hit-${index}`}
-            x={bar.x}
-            y={VERTICAL_PADDING}
-            width={bar.width}
-            height={CHART_HEIGHT - VERTICAL_PADDING}
-            fill="transparent"
-            onPressIn={() => setActiveIndex(index)}
-            onPressOut={handleRelease}
           />
         ))}
 
@@ -488,6 +567,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 2,
     minWidth: 120,
+    zIndex: 10,
+    elevation: 4,
   },
   tooltipTitle: {
     fontSize: 12,
