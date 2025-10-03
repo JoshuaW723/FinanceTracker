@@ -78,9 +78,11 @@ export default function TransactionsScreen() {
   
   // Auto-scroll to current month on mount
   useEffect(() => {
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: false });
     }, 100);
+
+    return () => clearTimeout(timeout);
   }, []);
   
   const [searchTerm, setSearchTerm] = useState("");
@@ -139,7 +141,7 @@ export default function TransactionsScreen() {
   };
 
   const activeFilters = useMemo(() => {
-    const filters: Array<{ key: string; label: string; type: string; value?: string }> = [];
+    const filters: { key: string; label: string; type: string; value?: string }[] = [];
     if (searchTerm) {
       filters.push({ key: `search-${searchTerm}`, label: searchTerm, type: "search" });
     }
@@ -202,26 +204,43 @@ export default function TransactionsScreen() {
     });
 
     // Group by date with daily totals
-    const grouped = new Map<string, { transactions: Transaction[], dailyIncome: number, dailyExpense: number }>();
+    const grouped = new Map<
+      string,
+      {
+        transactions: Transaction[];
+        dailyIncome: number;
+        dailyExpense: number;
+        dailyNet: number;
+      }
+    >();
     filtered
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .forEach((transaction) => {
         const key = dayjs(transaction.date).format("YYYY-MM-DD");
-        const existing = grouped.get(key) ?? { transactions: [], dailyIncome: 0, dailyExpense: 0 };
+        const existing =
+          grouped.get(key) ?? {
+            transactions: [],
+            dailyIncome: 0,
+            dailyExpense: 0,
+            dailyNet: 0,
+          };
         existing.transactions.push(transaction);
         if (transaction.type === "income") {
           existing.dailyIncome += transaction.amount;
+          existing.dailyNet += transaction.amount;
         } else {
           existing.dailyExpense += transaction.amount;
+          existing.dailyNet -= transaction.amount;
         }
         grouped.set(key, existing);
       });
 
     const sectionData = Array.from(grouped.entries()).map(([key, value]) => ({
       title: dayjs(key).format("dddd, MMM D"),
-      data: [value], // Wrap in array as SectionList expects array of items
+      data: [{ ...value, id: key }],
       dailyIncome: value.dailyIncome,
       dailyExpense: value.dailyExpense,
+      dailyNet: value.dailyNet,
     }));
 
     // Calculate summary
@@ -239,20 +258,15 @@ export default function TransactionsScreen() {
 
     // Calculate balances
     let openingBalance = 0;
-    let previousPeriodNet = 0;
-    
-    transactions
+
+    [...transactions]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .forEach((transaction) => {
         const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
         const date = dayjs(transaction.date);
-        
+
         if (date.isBefore(start)) {
           openingBalance += value;
-          // Track previous period for percentage calculation
-          if (date.isAfter(start.subtract(1, "month"))) {
-            previousPeriodNet += value;
-          }
         }
       });
 
@@ -290,7 +304,7 @@ export default function TransactionsScreen() {
         net: netChange,
         openingBalance,
         closingBalance,
-        percentageChange: formatPercentage(netChange, previousPeriodNet),
+        percentageChange: formatPercentage(closingBalance, openingBalance),
       },
       expenseBreakdown: breakdown,
       filteredRecurring: recurring,
@@ -527,23 +541,22 @@ export default function TransactionsScreen() {
             </Text>
           </View>
         }
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeaderContainer}>
-            <Text style={styles.sectionHeader}>{section.title}</Text>
-            <View style={styles.sectionTotals}>
-              {section.dailyIncome > 0 && (
-                <Text style={styles.dailyIncome}>
-                  +{formatCurrency(section.dailyIncome, currency || "USD")}
-                </Text>
-              )}
-              {section.dailyExpense > 0 && (
-                <Text style={styles.dailyExpense}>
-                  −{formatCurrency(section.dailyExpense, currency || "USD")}
-                </Text>
-              )}
+        renderSectionHeader={({ section }) => {
+          const netPrefix = section.dailyNet > 0 ? "+" : section.dailyNet < 0 ? "−" : "";
+          return (
+            <View style={styles.sectionHeaderContainer}>
+              <Text style={styles.sectionHeader}>{section.title}</Text>
+              <View style={styles.sectionTotals}>
+                <View style={styles.sectionNetPill(section.dailyNet)}>
+                  <Text style={styles.sectionNetText(section.dailyNet)}>
+                    {netPrefix}
+                    {formatCurrency(Math.abs(section.dailyNet), currency || "USD")}
+                  </Text>
+                </View>
+              </View>
             </View>
-          </View>
-        )}
+          );
+        }}
         renderItem={({ item }) => (
           <View style={styles.dayCard}>
             {item.transactions.map((transaction, index) => (
@@ -1056,18 +1069,29 @@ const createStyles = (theme: any, insets: any) =>
     },
     sectionTotals: {
       flexDirection: "row",
-      gap: 8,
     },
-    dailyIncome: {
+    sectionNetPill: (net: number) => ({
+      backgroundColor:
+        net > 0
+          ? `${theme.colors.success}25`
+          : net < 0
+          ? `${theme.colors.danger}25`
+          : `${theme.colors.textMuted}25`,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+    }),
+    sectionNetText: (net: number) => ({
       fontSize: 11,
-      fontWeight: "600",
-      color: theme.colors.success,
-    },
-    dailyExpense: {
-      fontSize: 11,
-      fontWeight: "600",
-      color: theme.colors.danger,
-    },
+      fontWeight: "700",
+      color:
+        net > 0
+          ? theme.colors.success
+          : net < 0
+          ? theme.colors.danger
+          : theme.colors.textMuted,
+      letterSpacing: 0.3,
+    }),
     dayCard: {
       backgroundColor: theme.colors.surface,
       marginHorizontal: 16,
