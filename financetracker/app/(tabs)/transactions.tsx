@@ -13,6 +13,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import dayjs, { type Dayjs } from "dayjs";
 
 import { useAppTheme } from "../../theme";
@@ -66,6 +67,7 @@ export default function TransactionsScreen() {
   const categories = useFinanceStore((state) => state.preferences.categories);
   const recurringTransactions = useFinanceStore((state) => state.recurringTransactions);
   const logRecurringTransaction = useFinanceStore((state) => state.logRecurringTransaction);
+  const router = useRouter();
 
   const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -103,8 +105,8 @@ export default function TransactionsScreen() {
 
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
-      prev.includes(category) 
-        ? prev.filter((item) => item !== category) 
+      prev.includes(category)
+        ? prev.filter((item) => item !== category)
         : [...prev, category],
     );
   };
@@ -174,7 +176,7 @@ export default function TransactionsScreen() {
 
     const filtered = transactions.filter((transaction) => {
       const date = dayjs(transaction.date);
-      
+
       // Period filter
       if (date.isBefore(start) || date.isAfter(end)) return false;
       
@@ -199,9 +201,11 @@ export default function TransactionsScreen() {
         const matchesCategory = transaction.category.toLowerCase().includes(query);
         if (!matchesNote && !matchesCategory) return false;
       }
-      
+
       return true;
     });
+
+    const reportable = filtered.filter((transaction) => !transaction.excludeFromReports);
 
     // Group by date with daily totals
     const grouped = new Map<
@@ -244,7 +248,7 @@ export default function TransactionsScreen() {
     }));
 
     // Calculate summary
-    const totals = filtered.reduce(
+    const totals = reportable.reduce(
       (acc, transaction) => {
         if (transaction.type === "income") {
           acc.income += transaction.amount;
@@ -259,7 +263,7 @@ export default function TransactionsScreen() {
     // Calculate balances
     let openingBalance = 0;
 
-    [...transactions]
+    [...transactions.filter((transaction) => !transaction.excludeFromReports)]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .forEach((transaction) => {
         const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
@@ -274,7 +278,7 @@ export default function TransactionsScreen() {
     const closingBalance = openingBalance + netChange;
 
     // Expense breakdown
-    const expenseMap = filtered.reduce((acc, transaction) => {
+    const expenseMap = reportable.reduce((acc, transaction) => {
       if (transaction.type !== "expense") return acc;
       const current = acc.get(transaction.category) ?? 0;
       acc.set(transaction.category, current + transaction.amount);
@@ -559,32 +563,52 @@ export default function TransactionsScreen() {
         }}
         renderItem={({ item }) => (
           <View style={styles.dayCard}>
-            {item.transactions.map((transaction, index) => (
-              <View key={transaction.id}>
-                {index > 0 && <View style={styles.transactionDivider} />}
-                <Pressable style={styles.transactionItem}>
-                  <View style={styles.transactionLeft}>
-                    <View style={styles.categoryIcon(transaction.type)}>
-                      <Text style={styles.categoryInitial}>
-                        {transaction.category.charAt(0).toUpperCase()}
-                      </Text>
+            {item.transactions.map((transaction, index) => {
+              const metaPieces = [transaction.category];
+              if (transaction.location) {
+                metaPieces.push(transaction.location);
+              }
+              if (transaction.participants?.length) {
+                metaPieces.push(`With ${transaction.participants.join(", ")}`);
+              }
+
+              return (
+                <View key={transaction.id}>
+                  {index > 0 && <View style={styles.transactionDivider} />}
+                  <Pressable
+                    style={styles.transactionItem}
+                    onPress={() => router.push(`/transactions/${transaction.id}`)}
+                  >
+                    <View style={styles.transactionLeft}>
+                      <View style={styles.categoryIcon(transaction.type)}>
+                        <Text style={styles.categoryInitial}>
+                          {transaction.category.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.transactionDetails}>
+                        <Text style={styles.transactionNote} numberOfLines={1}>
+                          {transaction.note}
+                        </Text>
+                        <Text style={styles.transactionMeta} numberOfLines={1}>
+                          {metaPieces.join(" • ")}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.transactionDetails}>
-                      <Text style={styles.transactionNote} numberOfLines={1}>
-                        {transaction.note}
+                    <View style={styles.transactionRight}>
+                      <Text style={styles.transactionAmount(transaction.type)}>
+                        {transaction.type === "income" ? "+" : "−"}
+                        {formatCurrency(transaction.amount, currency || "USD")}
                       </Text>
-                      <Text style={styles.transactionMeta}>
-                        {transaction.category} • {dayjs(transaction.date).format("h:mm A")}
-                      </Text>
+                      {transaction.excludeFromReports && (
+                        <View style={styles.excludedBadge}>
+                          <Text style={styles.excludedBadgeText}>Excluded</Text>
+                        </View>
+                      )}
                     </View>
-                  </View>
-                  <Text style={styles.transactionAmount(transaction.type)}>
-                    {transaction.type === "income" ? "+" : "−"}
-                    {formatCurrency(transaction.amount, currency || "USD")}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -666,15 +690,15 @@ export default function TransactionsScreen() {
                 <Text style={styles.filterSectionTitle}>Categories</Text>
                 <View style={styles.categoryGrid}>
                   {categories.map((category) => {
-                    const selected = selectedCategories.includes(category);
+                    const selected = selectedCategories.includes(category.name);
                     return (
                       <Pressable
-                        key={category}
-                        onPress={() => toggleCategory(category)}
+                        key={category.id}
+                        onPress={() => toggleCategory(category.name)}
                         style={styles.categoryOption(selected)}
                       >
                         <Text style={styles.categoryOptionText(selected)}>
-                          {category}
+                          {category.name}
                         </Text>
                       </Pressable>
                     );
@@ -1148,6 +1172,23 @@ const createStyles = (theme: any, insets: any) =>
       fontWeight: "700",
       color: type === "income" ? theme.colors.success : theme.colors.danger,
     }),
+    transactionRight: {
+      alignItems: "flex-end",
+      gap: 6,
+    },
+    excludedBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: theme.radii.pill,
+      backgroundColor: `${theme.colors.border}55`,
+    },
+    excludedBadgeText: {
+      fontSize: 10,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
     separator: {
       height: 8,
     },

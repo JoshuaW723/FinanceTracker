@@ -8,7 +8,17 @@ export interface Transaction {
   note: string;
   type: TransactionType;
   category: string;
-  date: string; // ISO string
+  date: string; // ISO string (date only in practice)
+  participants?: string[];
+  location?: string;
+  photos?: string[];
+  excludeFromReports?: boolean;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  type: TransactionType;
 }
 
 export type ThemeMode = "light" | "dark";
@@ -39,7 +49,7 @@ interface Profile {
 
 interface Preferences {
   themeMode: ThemeMode;
-  categories: string[];
+  categories: Category[];
 }
 
 interface FinanceState {
@@ -49,6 +59,12 @@ interface FinanceState {
   recurringTransactions: RecurringTransaction[];
   budgetGoals: BudgetGoal[];
   addTransaction: (transaction: Omit<Transaction, "id">) => void;
+  updateTransaction: (
+    id: string,
+    updates: Partial<Omit<Transaction, "id">>,
+  ) => void;
+  removeTransaction: (id: string) => void;
+  duplicateTransaction: (id: string) => void;
   addRecurringTransaction: (
     transaction: Omit<RecurringTransaction, "id" | "nextOccurrence"> & {
       nextOccurrence: string;
@@ -61,7 +77,7 @@ interface FinanceState {
   removeBudgetGoal: (id: string) => void;
   updateProfile: (payload: Partial<Profile>) => void;
   setThemeMode: (mode: ThemeMode) => void;
-  addCategory: (category: string) => void;
+  addCategory: (category: Omit<Category, "id">) => void;
 }
 
 const now = new Date();
@@ -110,7 +126,7 @@ const seedTransactions: Transaction[] = [
     amount: 2450,
     note: "Freelance design retainer",
     type: "income",
-    category: "Work",
+    category: "Client Work",
     date: daysAgo(3),
   },
   {
@@ -182,7 +198,7 @@ const seedTransactions: Transaction[] = [
     amount: 64,
     note: "Co-working day pass",
     type: "expense",
-    category: "Work",
+    category: "Work Expenses",
     date: daysAgo(14),
   },
   {
@@ -238,7 +254,7 @@ const seedTransactions: Transaction[] = [
     amount: 275,
     note: "Client milestone bonus",
     type: "income",
-    category: "Work",
+    category: "Client Work",
     date: daysAgo(37),
   },
   {
@@ -382,7 +398,7 @@ const seedTransactions: Transaction[] = [
     amount: 620,
     note: "Brand strategy workshop",
     type: "income",
-    category: "Work",
+    category: "Client Work",
     date: daysAgo(83),
   },
   {
@@ -398,7 +414,7 @@ const seedTransactions: Transaction[] = [
     amount: 255,
     note: "Annual web hosting",
     type: "expense",
-    category: "Work",
+    category: "Work Expenses",
     date: daysAgo(89),
   },
 ];
@@ -425,16 +441,29 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   preferences: {
     themeMode: "dark",
     categories: [
-      "Food",
-      "Travel",
-      "Lifestyle",
-      "Work",
-      "Salary",
-      "Investing",
-      "Groceries",
-      "Consulting",
-      "Home",
-      "Fitness",
+      { id: "cat-food-expense", name: "Food", type: "expense" },
+      { id: "cat-groceries-expense", name: "Groceries", type: "expense" },
+      { id: "cat-dining-expense", name: "Dining", type: "expense" },
+      { id: "cat-lifestyle-expense", name: "Lifestyle", type: "expense" },
+      { id: "cat-fitness-expense", name: "Fitness", type: "expense" },
+      { id: "cat-travel-expense", name: "Travel", type: "expense" },
+      { id: "cat-transport-expense", name: "Transport", type: "expense" },
+      { id: "cat-home-expense", name: "Home", type: "expense" },
+      { id: "cat-bills-expense", name: "Bills", type: "expense" },
+      { id: "cat-gear-expense", name: "Gear", type: "expense" },
+      { id: "cat-creativity-expense", name: "Creativity", type: "expense" },
+      { id: "cat-outdoors-expense", name: "Outdoors", type: "expense" },
+      { id: "cat-work-expense", name: "Work Expenses", type: "expense" },
+      { id: "cat-entertainment-expense", name: "Entertainment", type: "expense" },
+      { id: "cat-pets-expense", name: "Pets", type: "expense" },
+      { id: "cat-family-expense", name: "Family", type: "expense" },
+      { id: "cat-side-hustle-income", name: "Side Hustle", type: "income" },
+      { id: "cat-client-work-income", name: "Client Work", type: "income" },
+      { id: "cat-salary-income", name: "Salary", type: "income" },
+      { id: "cat-consulting-income", name: "Consulting", type: "income" },
+      { id: "cat-resale-income", name: "Resale", type: "income" },
+      { id: "cat-creative-sales-income", name: "Creative Sales", type: "income" },
+      { id: "cat-investing-income", name: "Investing", type: "income" },
     ],
   },
   transactions: seedTransactions,
@@ -444,7 +473,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       amount: 72,
       note: "Coworking membership",
       type: "expense",
-      category: "Work",
+      category: "Work Expenses",
       frequency: "monthly",
       nextOccurrence: daysAgo(-5),
       isActive: true,
@@ -487,15 +516,76 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     },
   ],
   addTransaction: (transaction) =>
+    set((state) => {
+      const normalizedDate = new Date(transaction.date);
+      normalizedDate.setHours(0, 0, 0, 0);
+
+      const payload: Transaction = {
+        id: `t-${uid++}`,
+        participants: transaction.participants?.filter(Boolean) ?? [],
+        photos: transaction.photos ? [...transaction.photos] : [],
+        excludeFromReports: Boolean(transaction.excludeFromReports),
+        ...transaction,
+        note: transaction.note.trim(),
+        date: normalizedDate.toISOString(),
+      };
+
+      return {
+        transactions: [payload, ...state.transactions],
+      };
+    }),
+  updateTransaction: (id, updates) =>
     set((state) => ({
-      transactions: [
-        {
-          id: `t-${uid++}`,
-          ...transaction,
-        },
-        ...state.transactions,
-      ],
+      transactions: state.transactions.map((transaction) =>
+        transaction.id === id
+          ? {
+              ...transaction,
+              ...updates,
+              note: updates.note !== undefined ? updates.note.trim() : transaction.note,
+              participants: updates.participants
+                ? updates.participants.filter(Boolean)
+                : transaction.participants,
+              photos: updates.photos ? [...updates.photos] : transaction.photos,
+              excludeFromReports:
+                updates.excludeFromReports !== undefined
+                  ? Boolean(updates.excludeFromReports)
+                  : transaction.excludeFromReports,
+              date:
+                updates.date !== undefined
+                  ? (() => {
+                      const normalized = new Date(updates.date);
+                      normalized.setHours(0, 0, 0, 0);
+                      return normalized.toISOString();
+                    })()
+                  : transaction.date,
+            }
+          : transaction,
+      ),
     })),
+  removeTransaction: (id) =>
+    set((state) => ({
+      transactions: state.transactions.filter((transaction) => transaction.id !== id),
+    })),
+  duplicateTransaction: (id) => {
+    const existing = get().transactions.find((transaction) => transaction.id === id);
+    if (!existing) {
+      return;
+    }
+
+    const copy: Omit<Transaction, "id"> = {
+      amount: existing.amount,
+      note: existing.note,
+      type: existing.type,
+      category: existing.category,
+      date: existing.date,
+      participants: existing.participants ? [...existing.participants] : undefined,
+      location: existing.location,
+      photos: existing.photos ? [...existing.photos] : undefined,
+      excludeFromReports: existing.excludeFromReports,
+    };
+
+    get().addTransaction(copy);
+  },
   addRecurringTransaction: (transaction) =>
     set((state) => ({
       recurringTransactions: [
@@ -589,17 +679,28 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       },
     })),
   addCategory: (category) => {
-    const value = category.trim();
+    const value = category.name.trim();
     if (!value) {
       return;
     }
 
+    const slug = value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    const id = `cat-${slug}-${category.type}`;
+
     set((state) => ({
       preferences: {
         ...state.preferences,
-        categories: state.preferences.categories.includes(value)
+        categories: state.preferences.categories.some(
+          (existing) => existing.name === value && existing.type === category.type,
+        )
           ? state.preferences.categories
-          : [...state.preferences.categories, value],
+          : [
+              ...state.preferences.categories,
+              { id, name: value, type: category.type },
+            ],
       },
     }));
   },
