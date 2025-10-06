@@ -75,6 +75,11 @@ export default function HomeScreen() {
   const recurringTransactions = useFinanceStore((state) => state.recurringTransactions);
   const logRecurringTransaction = useFinanceStore((state) => state.logRecurringTransaction);
 
+  const reportableTransactions = useMemo(
+    () => transactions.filter((transaction) => !transaction.excludeFromReports),
+    [transactions],
+  );
+
   const [overviewPeriod, setOverviewPeriod] = useState<"week" | "month">("month");
   const [overviewChart, setOverviewChart] = useState<"bar" | "line">("bar");
   const [topSpendingPeriod, setTopSpendingPeriod] = useState<"week" | "month">("month");
@@ -91,11 +96,11 @@ export default function HomeScreen() {
 
   const balance = useMemo(
     () =>
-      transactions.reduce((acc, transaction) => {
+      reportableTransactions.reduce((acc, transaction) => {
         const multiplier = transaction.type === "income" ? 1 : -1;
         return acc + transaction.amount * multiplier;
       }, 0),
-    [transactions],
+    [reportableTransactions],
   );
 
   const startOfMonth = useMemo(() => dayjs().startOf("month"), []);
@@ -103,7 +108,7 @@ export default function HomeScreen() {
 
   const summary = useMemo(
     () =>
-      transactions.reduce(
+      reportableTransactions.reduce(
         (acc, transaction) => {
           const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
           const date = dayjs(transaction.date);
@@ -125,7 +130,7 @@ export default function HomeScreen() {
         },
         { income: 0, expense: 0, openingBalance: 0, monthNet: 0 },
       ),
-    [endOfMonth, startOfMonth, transactions],
+    [endOfMonth, reportableTransactions, startOfMonth],
   );
 
   const {
@@ -139,7 +144,7 @@ export default function HomeScreen() {
     const periodStart = overviewPeriod === "week" ? today.startOf("week") : today.startOf("month");
     const periodEnd = overviewPeriod === "week" ? today.endOf("week") : today.endOf("month");
 
-    const filtered = transactions.filter((transaction) => {
+    const filtered = reportableTransactions.filter((transaction) => {
       const date = dayjs(transaction.date);
       return !date.isBefore(periodStart) && !date.isAfter(periodEnd);
     });
@@ -184,7 +189,7 @@ export default function HomeScreen() {
     const previousPeriodEnd =
       overviewPeriod === "week" ? previousPeriodStart.endOf("week") : previousPeriodStart.endOf("month");
 
-    const previousExpense = transactions.reduce((acc, transaction) => {
+    const previousExpense = reportableTransactions.reduce((acc, transaction) => {
       if (transaction.type !== "expense") {
         return acc;
       }
@@ -202,7 +207,7 @@ export default function HomeScreen() {
             const target = today.subtract(offset, "month");
             const start = target.startOf("month");
             const end = target.endOf("month");
-            const spent = transactions.reduce((acc, transaction) => {
+            const spent = reportableTransactions.reduce((acc, transaction) => {
               if (transaction.type !== "expense") {
                 return acc;
               }
@@ -236,7 +241,7 @@ export default function HomeScreen() {
 
     const currentMonthDaily = Array.from({ length: daysInMonth }).map((_, index) => {
       const day = monthStart.add(index, "day");
-      const spent = transactions
+      const spent = reportableTransactions
         .filter((transaction) => transaction.type === "expense" && dayjs(transaction.date).isSame(day, "day"))
         .reduce((acc, transaction) => acc + transaction.amount, 0);
 
@@ -245,7 +250,7 @@ export default function HomeScreen() {
 
     const previousMonthValues = Array.from({ length: previousMonthDayCount }).map((_, index) => {
       const day = previousMonthStart.add(index, "day");
-      return transactions
+      return reportableTransactions
         .filter((transaction) => transaction.type === "expense" && dayjs(transaction.date).isSame(day, "day"))
         .reduce((acc, transaction) => acc + transaction.amount, 0);
     });
@@ -269,14 +274,14 @@ export default function HomeScreen() {
         previous: previousMonthDaily,
       },
     };
-  }, [overviewPeriod, transactions]);
+  }, [overviewPeriod, reportableTransactions]);
 
   const topSpending = useMemo(() => {
     const today = dayjs();
     const periodStart = topSpendingPeriod === "week" ? today.startOf("week") : today.startOf("month");
     const periodEnd = topSpendingPeriod === "week" ? today.endOf("week") : today.endOf("month");
 
-    const filtered = transactions.filter((transaction) => {
+    const filtered = reportableTransactions.filter((transaction) => {
       if (transaction.type !== "expense") {
         return false;
       }
@@ -314,7 +319,7 @@ export default function HomeScreen() {
     }
 
     return { entries, totalSpent };
-  }, [topSpendingPeriod, transactions]);
+  }, [reportableTransactions, topSpendingPeriod]);
 
   const donutColors = useMemo(
     () => [
@@ -629,7 +634,7 @@ export default function HomeScreen() {
             </View>
             <View style={styles.goalList}>
               {budgetGoals.map((goal) => {
-                const progress = summarizeGoalProgress(goal, currency, transactions);
+                const progress = summarizeGoalProgress(goal, currency, reportableTransactions);
                 const progressPercent = Math.round(progress.percentage * 100);
                 const goalComplete = progressPercent >= 100;
 
