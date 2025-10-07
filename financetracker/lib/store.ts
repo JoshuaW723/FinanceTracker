@@ -21,6 +21,38 @@ export interface Category {
   type: TransactionType;
 }
 
+export const DEFAULT_CATEGORIES: Category[] = [
+  { id: "cat-food-expense", name: "Food", type: "expense" },
+  { id: "cat-groceries-expense", name: "Groceries", type: "expense" },
+  { id: "cat-dining-expense", name: "Dining", type: "expense" },
+  { id: "cat-lifestyle-expense", name: "Lifestyle", type: "expense" },
+  { id: "cat-fitness-expense", name: "Fitness", type: "expense" },
+  { id: "cat-travel-expense", name: "Travel", type: "expense" },
+  { id: "cat-transport-expense", name: "Transport", type: "expense" },
+  { id: "cat-home-expense", name: "Home", type: "expense" },
+  { id: "cat-bills-expense", name: "Bills", type: "expense" },
+  { id: "cat-gear-expense", name: "Gear", type: "expense" },
+  { id: "cat-creativity-expense", name: "Creativity", type: "expense" },
+  { id: "cat-outdoors-expense", name: "Outdoors", type: "expense" },
+  { id: "cat-work-expense", name: "Work Expenses", type: "expense" },
+  { id: "cat-entertainment-expense", name: "Entertainment", type: "expense" },
+  { id: "cat-pets-expense", name: "Pets", type: "expense" },
+  { id: "cat-family-expense", name: "Family", type: "expense" },
+  { id: "cat-health-expense", name: "Health", type: "expense" },
+  { id: "cat-education-expense", name: "Education", type: "expense" },
+  { id: "cat-utilities-expense", name: "Utilities", type: "expense" },
+  { id: "cat-rent-expense", name: "Rent", type: "expense" },
+  { id: "cat-side-hustle-income", name: "Side Hustle", type: "income" },
+  { id: "cat-client-work-income", name: "Client Work", type: "income" },
+  { id: "cat-salary-income", name: "Salary", type: "income" },
+  { id: "cat-consulting-income", name: "Consulting", type: "income" },
+  { id: "cat-resale-income", name: "Resale", type: "income" },
+  { id: "cat-creative-sales-income", name: "Creative Sales", type: "income" },
+  { id: "cat-investing-income", name: "Investing", type: "income" },
+  { id: "cat-bonus-income", name: "Bonus", type: "income" },
+  { id: "cat-dividends-income", name: "Dividends", type: "income" },
+];
+
 export type ThemeMode = "light" | "dark";
 
 export interface RecurringTransaction {
@@ -440,31 +472,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
   },
   preferences: {
     themeMode: "dark",
-    categories: [
-      { id: "cat-food-expense", name: "Food", type: "expense" },
-      { id: "cat-groceries-expense", name: "Groceries", type: "expense" },
-      { id: "cat-dining-expense", name: "Dining", type: "expense" },
-      { id: "cat-lifestyle-expense", name: "Lifestyle", type: "expense" },
-      { id: "cat-fitness-expense", name: "Fitness", type: "expense" },
-      { id: "cat-travel-expense", name: "Travel", type: "expense" },
-      { id: "cat-transport-expense", name: "Transport", type: "expense" },
-      { id: "cat-home-expense", name: "Home", type: "expense" },
-      { id: "cat-bills-expense", name: "Bills", type: "expense" },
-      { id: "cat-gear-expense", name: "Gear", type: "expense" },
-      { id: "cat-creativity-expense", name: "Creativity", type: "expense" },
-      { id: "cat-outdoors-expense", name: "Outdoors", type: "expense" },
-      { id: "cat-work-expense", name: "Work Expenses", type: "expense" },
-      { id: "cat-entertainment-expense", name: "Entertainment", type: "expense" },
-      { id: "cat-pets-expense", name: "Pets", type: "expense" },
-      { id: "cat-family-expense", name: "Family", type: "expense" },
-      { id: "cat-side-hustle-income", name: "Side Hustle", type: "income" },
-      { id: "cat-client-work-income", name: "Client Work", type: "income" },
-      { id: "cat-salary-income", name: "Salary", type: "income" },
-      { id: "cat-consulting-income", name: "Consulting", type: "income" },
-      { id: "cat-resale-income", name: "Resale", type: "income" },
-      { id: "cat-creative-sales-income", name: "Creative Sales", type: "income" },
-      { id: "cat-investing-income", name: "Investing", type: "income" },
-    ],
+    categories: [...DEFAULT_CATEGORIES],
   },
   transactions: seedTransactions,
   recurringTransactions: [
@@ -587,16 +595,36 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     get().addTransaction(copy);
   },
   addRecurringTransaction: (transaction) =>
-    set((state) => ({
-      recurringTransactions: [
-        ...state.recurringTransactions,
-        {
-          id: `r-${state.recurringTransactions.length + 1}`,
-          ...transaction,
-          isActive: true,
-        },
-      ],
-    })),
+    set((state) => {
+      const normalizedStart = new Date(transaction.nextOccurrence);
+      normalizedStart.setHours(0, 0, 0, 0);
+      const startDateIso = normalizedStart.toISOString();
+
+      const alreadyLogged = state.transactions.some(
+        (entry) =>
+          entry.date === startDateIso &&
+          entry.amount === transaction.amount &&
+          entry.type === transaction.type &&
+          entry.category === transaction.category &&
+          entry.note === transaction.note.trim(),
+      );
+
+      const nextOccurrence = alreadyLogged
+        ? nextOccurrenceForFrequency(startDateIso, transaction.frequency)
+        : startDateIso;
+
+      return {
+        recurringTransactions: [
+          ...state.recurringTransactions,
+          {
+            id: `r-${state.recurringTransactions.length + 1}`,
+            ...transaction,
+            nextOccurrence,
+            isActive: true,
+          },
+        ],
+      };
+    }),
   toggleRecurringTransaction: (id, active) =>
     set((state) => ({
       recurringTransactions: state.recurringTransactions.map((item) =>

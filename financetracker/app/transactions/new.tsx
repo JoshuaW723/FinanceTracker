@@ -6,6 +6,9 @@ import { useFinanceStore } from "../../lib/store";
 export default function NewTransactionModal() {
   const router = useRouter();
   const addTransaction = useFinanceStore((state) => state.addTransaction);
+  const addRecurringTransaction = useFinanceStore(
+    (state) => state.addRecurringTransaction,
+  );
 
   return (
     <TransactionForm
@@ -15,6 +18,18 @@ export default function NewTransactionModal() {
       onSubmit={(transaction) => {
         addTransaction(transaction);
         router.back();
+      }}
+      enableRecurringOption
+      onSubmitRecurring={(transaction, config) => {
+        addRecurringTransaction({
+          amount: transaction.amount,
+          note: transaction.note,
+          type: transaction.type,
+          category: transaction.category,
+          frequency: config.frequency,
+          nextOccurrence: config.startDate,
+          isActive: true,
+        });
       }}
     />
   );
