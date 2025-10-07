@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -20,7 +20,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAppTheme } from "../../theme";
-import { Category, Transaction, TransactionType, useFinanceStore } from "../../lib/store";
+import {
+  Category,
+  DEFAULT_CATEGORIES,
+  RecurringTransaction,
+  Transaction,
+  TransactionType,
+  useFinanceStore,
+} from "../../lib/store";
 
 interface TransactionFormProps {
   title: string;
@@ -28,9 +35,19 @@ interface TransactionFormProps {
   onCancel: () => void;
   onSubmit: (transaction: Omit<Transaction, "id">) => void;
   initialValues?: Partial<Transaction>;
+  enableRecurringOption?: boolean;
+  onSubmitRecurring?: (
+    transaction: Omit<Transaction, "id">,
+    config: { frequency: RecurringTransaction["frequency"]; startDate: string },
+  ) => void;
 }
 
 const MAX_PHOTOS = 3;
+const recurringOptions: { label: string; value: RecurringTransaction["frequency"] }[] = [
+  { label: "Weekly", value: "weekly" },
+  { label: "Bi-weekly", value: "biweekly" },
+  { label: "Monthly", value: "monthly" },
+];
 
 export function TransactionForm({
   title,
@@ -38,12 +55,15 @@ export function TransactionForm({
   onCancel,
   onSubmit,
   initialValues,
+  enableRecurringOption = false,
+  onSubmitRecurring,
 }: TransactionFormProps) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
   const currency = useFinanceStore((state) => state.profile.currency);
   const categories = useFinanceStore((state) => state.preferences.categories);
+  const availableCategories = categories.length ? categories : DEFAULT_CATEGORIES;
 
   const findInitialCategory = () => {
     if (!initialValues?.category) {
@@ -51,7 +71,7 @@ export function TransactionForm({
     }
 
     return (
-      categories.find(
+      availableCategories.find(
         (category) =>
           category.name === initialValues.category &&
           (!initialValues.type || category.type === initialValues.type),
@@ -86,6 +106,16 @@ export function TransactionForm({
   const [excludeFromReports, setExcludeFromReports] = useState(
     Boolean(initialValues?.excludeFromReports),
   );
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<
+    RecurringTransaction["frequency"]
+  >("monthly");
+
+  useEffect(() => {
+    if (!enableRecurringOption) {
+      setIsRecurring(false);
+    }
+  }, [enableRecurringOption]);
 
   const noteWordCount = useMemo(() => {
     if (!note.trim()) return 0;
@@ -193,6 +223,13 @@ export function TransactionForm({
     };
 
     onSubmit(payload);
+
+    if (enableRecurringOption && isRecurring && onSubmitRecurring) {
+      onSubmitRecurring(payload, {
+        frequency: recurringFrequency,
+        startDate: date.toISOString(),
+      });
+    }
   };
 
   return (
@@ -301,6 +338,48 @@ export function TransactionForm({
               />
             )}
           </View>
+
+          {enableRecurringOption && (
+            <View style={styles.recurringCard}>
+              <View style={styles.recurringHeader}>
+                <View style={styles.flex}>
+                  <Text style={styles.label}>Make recurring</Text>
+                  <Text style={styles.helperText}>
+                    Repeat this transaction automatically on a schedule.
+                  </Text>
+                </View>
+                <Switch
+                  value={isRecurring}
+                  onValueChange={setIsRecurring}
+                  thumbColor={isRecurring ? theme.colors.primary : theme.colors.surface}
+                  trackColor={{ true: `${theme.colors.primary}55`, false: theme.colors.border }}
+                />
+              </View>
+
+              {isRecurring && (
+                <View style={styles.recurringBody}>
+                  <Text style={styles.label}>Repeats</Text>
+                  <View style={styles.frequencyRow}>
+                    {recurringOptions.map((option) => {
+                      const active = recurringFrequency === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          style={styles.frequencyPill(active)}
+                          onPress={() => setRecurringFrequency(option.value)}
+                        >
+                          <Text style={styles.frequencyPillText(active)}>{option.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.helperText}>
+                    Next occurrence will be on {dayjs(date).format("MMM D, YYYY")}.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           <Pressable
             style={styles.detailsToggle}
@@ -435,9 +514,16 @@ export function TransactionForm({
             showsVerticalScrollIndicator={false}
           >
             {(["expense", "income"] as TransactionType[]).map((type) => {
-              const entries = categories.filter((category) => category.type === type);
+              const entries = availableCategories.filter((category) => category.type === type);
               if (!entries.length) {
-                return null;
+                return (
+                  <View key={type} style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>
+                      {type === "expense" ? "Expenses" : "Income"}
+                    </Text>
+                    <Text style={styles.helperText}>No categories available yet.</Text>
+                  </View>
+                );
               }
 
               return (
@@ -578,6 +664,41 @@ const createStyles = (
       fontSize: 16,
       fontWeight: "600",
     },
+    recurringCard: {
+      gap: theme.spacing.md,
+      padding: theme.spacing.lg,
+      borderRadius: theme.radii.lg,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    recurringHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.md,
+    },
+    recurringBody: {
+      gap: theme.spacing.sm,
+    },
+    frequencyRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.sm,
+    },
+    frequencyPill: (active: boolean) => ({
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      borderColor: active ? theme.colors.primary : theme.colors.border,
+      backgroundColor: active ? `${theme.colors.primary}22` : theme.colors.surface,
+    }),
+    frequencyPillText: (active: boolean) => ({
+      fontSize: 13,
+      fontWeight: "600",
+      color: active ? theme.colors.text : theme.colors.textMuted,
+    }),
     detailsToggle: {
       flexDirection: "row",
       alignItems: "center",
