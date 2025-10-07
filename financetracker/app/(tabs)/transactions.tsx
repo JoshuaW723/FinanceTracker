@@ -207,6 +207,35 @@ export default function TransactionsScreen() {
 
     const reportable = filtered.filter((transaction) => !transaction.excludeFromReports);
 
+    const parseTransactionId = (id: string) => {
+      const match = id.match(/(\d+)$/);
+      return match ? Number(match[1]) : null;
+    };
+
+    const sortTransactionsByRecency = (a: Transaction, b: Transaction) => {
+      const dateDiff = dayjs(b.date).valueOf() - dayjs(a.date).valueOf();
+      if (dateDiff !== 0) {
+        return dateDiff;
+      }
+
+      const aId = parseTransactionId(a.id);
+      const bId = parseTransactionId(b.id);
+
+      if (aId !== null && bId !== null && aId !== bId) {
+        return bId - aId;
+      }
+
+      if (bId !== null && aId === null) {
+        return 1;
+      }
+
+      if (aId !== null && bId === null) {
+        return -1;
+      }
+
+      return 0;
+    };
+
     // Group by date with daily totals
     const grouped = new Map<
       string,
@@ -218,7 +247,7 @@ export default function TransactionsScreen() {
       }
     >();
     filtered
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .sort(sortTransactionsByRecency)
       .forEach((transaction) => {
         const key = dayjs(transaction.date).format("YYYY-MM-DD");
         const existing =
