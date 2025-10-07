@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
 import { useRouter } from "expo-router";
@@ -75,12 +75,18 @@ export default function HomeScreen() {
   const recurringTransactions = useFinanceStore((state) => state.recurringTransactions);
   const logRecurringTransaction = useFinanceStore((state) => state.logRecurringTransaction);
 
+  const reportableTransactions = useMemo(
+    () => transactions.filter((transaction) => !transaction.excludeFromReports),
+    [transactions],
+  );
+
   const [overviewPeriod, setOverviewPeriod] = useState<"week" | "month">("month");
   const [overviewChart, setOverviewChart] = useState<"bar" | "line">("bar");
   const [topSpendingPeriod, setTopSpendingPeriod] = useState<"week" | "month">("month");
   const [showBalance, setShowBalance] = useState(true);
 
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
 
   useEffect(() => {
     if (overviewPeriod === "week" && overviewChart === "line") {
@@ -90,11 +96,11 @@ export default function HomeScreen() {
 
   const balance = useMemo(
     () =>
-      transactions.reduce((acc, transaction) => {
+      reportableTransactions.reduce((acc, transaction) => {
         const multiplier = transaction.type === "income" ? 1 : -1;
         return acc + transaction.amount * multiplier;
       }, 0),
-    [transactions],
+    [reportableTransactions],
   );
 
   const startOfMonth = useMemo(() => dayjs().startOf("month"), []);
@@ -102,7 +108,7 @@ export default function HomeScreen() {
 
   const summary = useMemo(
     () =>
-      transactions.reduce(
+      reportableTransactions.reduce(
         (acc, transaction) => {
           const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
           const date = dayjs(transaction.date);
@@ -124,7 +130,7 @@ export default function HomeScreen() {
         },
         { income: 0, expense: 0, openingBalance: 0, monthNet: 0 },
       ),
-    [endOfMonth, startOfMonth, transactions],
+    [endOfMonth, reportableTransactions, startOfMonth],
   );
 
   const {
@@ -138,7 +144,7 @@ export default function HomeScreen() {
     const periodStart = overviewPeriod === "week" ? today.startOf("week") : today.startOf("month");
     const periodEnd = overviewPeriod === "week" ? today.endOf("week") : today.endOf("month");
 
-    const filtered = transactions.filter((transaction) => {
+    const filtered = reportableTransactions.filter((transaction) => {
       const date = dayjs(transaction.date);
       return !date.isBefore(periodStart) && !date.isAfter(periodEnd);
     });
@@ -183,7 +189,7 @@ export default function HomeScreen() {
     const previousPeriodEnd =
       overviewPeriod === "week" ? previousPeriodStart.endOf("week") : previousPeriodStart.endOf("month");
 
-    const previousExpense = transactions.reduce((acc, transaction) => {
+    const previousExpense = reportableTransactions.reduce((acc, transaction) => {
       if (transaction.type !== "expense") {
         return acc;
       }
@@ -201,7 +207,7 @@ export default function HomeScreen() {
             const target = today.subtract(offset, "month");
             const start = target.startOf("month");
             const end = target.endOf("month");
-            const spent = transactions.reduce((acc, transaction) => {
+            const spent = reportableTransactions.reduce((acc, transaction) => {
               if (transaction.type !== "expense") {
                 return acc;
               }
@@ -235,7 +241,7 @@ export default function HomeScreen() {
 
     const currentMonthDaily = Array.from({ length: daysInMonth }).map((_, index) => {
       const day = monthStart.add(index, "day");
-      const spent = transactions
+      const spent = reportableTransactions
         .filter((transaction) => transaction.type === "expense" && dayjs(transaction.date).isSame(day, "day"))
         .reduce((acc, transaction) => acc + transaction.amount, 0);
 
@@ -244,7 +250,7 @@ export default function HomeScreen() {
 
     const previousMonthValues = Array.from({ length: previousMonthDayCount }).map((_, index) => {
       const day = previousMonthStart.add(index, "day");
-      return transactions
+      return reportableTransactions
         .filter((transaction) => transaction.type === "expense" && dayjs(transaction.date).isSame(day, "day"))
         .reduce((acc, transaction) => acc + transaction.amount, 0);
     });
@@ -268,14 +274,14 @@ export default function HomeScreen() {
         previous: previousMonthDaily,
       },
     };
-  }, [overviewPeriod, transactions]);
+  }, [overviewPeriod, reportableTransactions]);
 
   const topSpending = useMemo(() => {
     const today = dayjs();
     const periodStart = topSpendingPeriod === "week" ? today.startOf("week") : today.startOf("month");
     const periodEnd = topSpendingPeriod === "week" ? today.endOf("week") : today.endOf("month");
 
-    const filtered = transactions.filter((transaction) => {
+    const filtered = reportableTransactions.filter((transaction) => {
       if (transaction.type !== "expense") {
         return false;
       }
@@ -313,7 +319,7 @@ export default function HomeScreen() {
     }
 
     return { entries, totalSpent };
-  }, [topSpendingPeriod, transactions]);
+  }, [reportableTransactions, topSpendingPeriod]);
 
   const donutColors = useMemo(
     () => [
@@ -368,7 +374,11 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <Text style={styles.hello}>Welcome back, {profile.name.split(" ")[0]}</Text>
           <Text style={styles.subtitle}>Here’s a tidy look at your money this month.</Text>
@@ -624,7 +634,7 @@ export default function HomeScreen() {
             </View>
             <View style={styles.goalList}>
               {budgetGoals.map((goal) => {
-                const progress = summarizeGoalProgress(goal, currency, transactions);
+                const progress = summarizeGoalProgress(goal, currency, reportableTransactions);
                 const progressPercent = Math.round(progress.percentage * 100);
                 const goalComplete = progressPercent >= 100;
 
@@ -714,7 +724,10 @@ export default function HomeScreen() {
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+const createStyles = (
+  theme: ReturnType<typeof useAppTheme>,
+  insets: ReturnType<typeof useSafeAreaInsets>,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -723,7 +736,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     content: {
       paddingHorizontal: theme.spacing.md,
       paddingTop: theme.spacing.lg,
-      paddingBottom: theme.spacing.xxl + 96,
+      paddingBottom: theme.spacing.xxl + 96 + insets.bottom,
       gap: theme.spacing.lg,
     },
     header: {

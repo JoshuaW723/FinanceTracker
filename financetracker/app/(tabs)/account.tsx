@@ -10,11 +10,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useAppTheme } from "../../theme";
-import { ThemeMode, useFinanceStore } from "../../lib/store";
+import { ThemeMode, TransactionType, useFinanceStore } from "../../lib/store";
 
 const currencies = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY"];
 const goalPeriods = ["month", "week"] as const;
@@ -38,8 +38,10 @@ export default function AccountScreen() {
   const [goalTarget, setGoalTarget] = useState("");
   const [goalPeriod, setGoalPeriod] = useState<(typeof goalPeriods)[number]>("month");
   const [goalCategory, setGoalCategory] = useState<string | null>(null);
+  const [newCategoryType, setNewCategoryType] = useState<TransactionType>("expense");
 
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
 
   useEffect(() => {
     setName(profile.name);
@@ -67,9 +69,11 @@ export default function AccountScreen() {
       return;
     }
 
-    addCategory(newCategory.trim());
-    setGoalCategory(newCategory.trim());
+    const value = newCategory.trim();
+    addCategory({ name: value, type: newCategoryType });
+    setGoalCategory(value);
     setNewCategory("");
+    setNewCategoryType("expense");
   };
 
   const handleCreateGoal = () => {
@@ -102,7 +106,11 @@ export default function AccountScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={24}
       >
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.header}>
             <Text style={styles.title}>Account & preferences</Text>
             <Text style={styles.subtitle}>Personalize how your finance world looks.</Text>
@@ -199,11 +207,30 @@ export default function AccountScreen() {
                   <Text style={styles.secondaryButtonText}>Add</Text>
                 </Pressable>
               </View>
+              <View style={styles.themeRow}>
+                {(["expense", "income"] as TransactionType[]).map((type) => {
+                  const active = newCategoryType === type;
+                  return (
+                    <Pressable
+                      key={type}
+                      style={[styles.themeChip, active && styles.themeChipActive]}
+                      onPress={() => setNewCategoryType(type)}
+                    >
+                      <Text style={[styles.themeChipText, active && styles.themeChipTextActive]}>
+                        {type === "expense" ? "Expense" : "Income"}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
             <View style={styles.chipCloud}>
               {categories.map((category) => (
-                <View key={category} style={styles.categoryPill}>
-                  <Text style={styles.categoryPillText}>{category}</Text>
+                <View key={category.id} style={styles.categoryPill}>
+                  <Text style={styles.categoryPillText}>{category.name}</Text>
+                  <Text style={styles.categoryTypeBadge}>
+                    {category.type === "expense" ? "Expense" : "Income"}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -270,15 +297,17 @@ export default function AccountScreen() {
                   </Text>
                 </Pressable>
                 {categories.map((category) => {
-                  const active = goalCategory === category;
+                  const active = goalCategory === category.name;
                   return (
                     <Pressable
-                      key={category}
-                      onPress={() => setGoalCategory(category)}
+                      key={category.id}
+                      onPress={() => setGoalCategory(category.name)}
                       style={[styles.currencyChip, active && styles.currencyChipActive]}
                     >
-                      <Text style={[styles.currencyChipText, active && styles.currencyChipTextActive]}>
-                        {category}
+                      <Text
+                        style={[styles.currencyChipText, active && styles.currencyChipTextActive]}
+                      >
+                        {category.name}
                       </Text>
                     </Pressable>
                   );
@@ -320,7 +349,10 @@ export default function AccountScreen() {
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+const createStyles = (
+  theme: ReturnType<typeof useAppTheme>,
+  insets: ReturnType<typeof useSafeAreaInsets>,
+) =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -331,7 +363,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     content: {
       flexGrow: 1,
-      padding: theme.spacing.xl,
+      paddingTop: theme.spacing.xl,
+      paddingHorizontal: theme.spacing.xl,
+      paddingBottom: theme.spacing.xl + insets.bottom,
       gap: theme.spacing.xl,
     },
     header: {
@@ -454,15 +488,25 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     categoryPill: {
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.xs,
-      borderRadius: theme.radii.pill,
+      borderRadius: theme.radii.lg,
       backgroundColor: theme.colors.surface,
       borderWidth: 1,
       borderColor: theme.colors.border,
+      minWidth: 100,
+      gap: 2,
     },
     categoryPillText: {
       fontSize: 12,
       fontWeight: "600",
       color: theme.colors.text,
+    },
+    categoryTypeBadge: {
+      marginTop: 2,
+      fontSize: 10,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 1,
     },
     periodField: {
       maxWidth: 150,
