@@ -595,16 +595,36 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     get().addTransaction(copy);
   },
   addRecurringTransaction: (transaction) =>
-    set((state) => ({
-      recurringTransactions: [
-        ...state.recurringTransactions,
-        {
-          id: `r-${state.recurringTransactions.length + 1}`,
-          ...transaction,
-          isActive: true,
-        },
-      ],
-    })),
+    set((state) => {
+      const normalizedStart = new Date(transaction.nextOccurrence);
+      normalizedStart.setHours(0, 0, 0, 0);
+      const startDateIso = normalizedStart.toISOString();
+
+      const alreadyLogged = state.transactions.some(
+        (entry) =>
+          entry.date === startDateIso &&
+          entry.amount === transaction.amount &&
+          entry.type === transaction.type &&
+          entry.category === transaction.category &&
+          entry.note === transaction.note.trim(),
+      );
+
+      const nextOccurrence = alreadyLogged
+        ? nextOccurrenceForFrequency(startDateIso, transaction.frequency)
+        : startDateIso;
+
+      return {
+        recurringTransactions: [
+          ...state.recurringTransactions,
+          {
+            id: `r-${state.recurringTransactions.length + 1}`,
+            ...transaction,
+            nextOccurrence,
+            isActive: true,
+          },
+        ],
+      };
+    }),
   toggleRecurringTransaction: (id, active) =>
     set((state) => ({
       recurringTransactions: state.recurringTransactions.map((item) =>
