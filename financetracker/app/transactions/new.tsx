@@ -10,8 +10,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { SafeAreaView } from "react-native-safe-area-context";
+import DateTimePicker from "@react-native-community/datetimepicker"; 
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import dayjs from "dayjs";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,7 +33,12 @@ export default function NewTransactionModal() {
   const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(Platform.OS === "ios");
 
+<<<<<<< HEAD
   const styles = useMemo(() => createStyles(theme), [theme]);
+=======
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
+>>>>>>> parent of f99141b (Merge pull request #15 from JoshuaTGWibowo/9dheaz-codex/add-transaction-detail-input-features)
 
   const handleSubmit = () => {
     const parsedAmount = Number(amount);
@@ -64,7 +69,11 @@ export default function NewTransactionModal() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
+<<<<<<< HEAD
         keyboardVerticalOffset={32}
+=======
+        keyboardVerticalOffset={32 + insets.top}
+>>>>>>> parent of f99141b (Merge pull request #15 from JoshuaTGWibowo/9dheaz-codex/add-transaction-detail-input-features)
       >
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.closeButton}>
@@ -77,6 +86,10 @@ export default function NewTransactionModal() {
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.content}
+<<<<<<< HEAD
+=======
+          contentInsetAdjustmentBehavior="automatic"
+>>>>>>> parent of f99141b (Merge pull request #15 from JoshuaTGWibowo/9dheaz-codex/add-transaction-detail-input-features)
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.toggleRow}>
@@ -176,7 +189,14 @@ export default function NewTransactionModal() {
   );
 }
 
+<<<<<<< HEAD
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+=======
+const createStyles = (
+  theme: ReturnType<typeof useAppTheme>,
+  insets: ReturnType<typeof useSafeAreaInsets>,
+) =>
+>>>>>>> parent of f99141b (Merge pull request #15 from JoshuaTGWibowo/9dheaz-codex/add-transaction-detail-input-features)
   StyleSheet.create({
     safeArea: {
       flex: 1,
@@ -206,7 +226,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     content: {
       paddingHorizontal: theme.spacing.xl,
+<<<<<<< HEAD
       paddingBottom: theme.spacing.xl,
+=======
+      paddingBottom: theme.spacing.xl + insets.bottom,
+>>>>>>> parent of f99141b (Merge pull request #15 from JoshuaTGWibowo/9dheaz-codex/add-transaction-detail-input-features)
       gap: theme.spacing.lg,
     },
     toggleRow: {
@@ -279,7 +303,13 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     submitButton: {
       ...theme.components.buttonPrimary,
+<<<<<<< HEAD
       margin: theme.spacing.xl,
+=======
+      marginTop: theme.spacing.lg,
+      marginHorizontal: theme.spacing.xl,
+      marginBottom: theme.spacing.xl + insets.bottom,
+>>>>>>> parent of f99141b (Merge pull request #15 from JoshuaTGWibowo/9dheaz-codex/add-transaction-detail-input-features)
     },
     submitButtonText: {
       ...theme.components.buttonPrimaryText,
