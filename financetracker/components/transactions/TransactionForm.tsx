@@ -43,6 +43,55 @@ interface TransactionFormProps {
 }
 
 const MAX_PHOTOS = 3;
+
+const parseAmountInput = (rawValue: string): number => {
+  const sanitized = rawValue
+    .replace(/[\s']/g, "")
+    .replace(/[^0-9,.-]/g, "");
+  if (!sanitized) {
+    return Number.NaN;
+  }
+
+  const hasComma = sanitized.includes(",");
+  const hasDot = sanitized.includes(".");
+  let normalized = sanitized;
+
+  if (hasComma && hasDot) {
+    const lastComma = sanitized.lastIndexOf(",");
+    const lastDot = sanitized.lastIndexOf(".");
+    const decimalSeparator = lastComma > lastDot ? "," : ".";
+    const thousandSeparator = decimalSeparator === "," ? "." : ",";
+    const thousandPattern = new RegExp(`\\${thousandSeparator}`, "g");
+    normalized = normalized.replace(thousandPattern, "");
+    if (decimalSeparator === ",") {
+      normalized = normalized.replace(/,/g, ".");
+    }
+  } else if (hasComma) {
+    const parts = sanitized.split(",");
+    const isDecimalCandidate =
+      (parts.length === 2 && parts[1].length <= 2) ||
+      (parts.length === 2 && parts[1].length <= 3 && parts[0].length > 2);
+
+    normalized = isDecimalCandidate ? sanitized.replace(/,/g, ".") : sanitized.replace(/,/g, "");
+  } else if (hasDot) {
+    const parts = sanitized.split(".");
+    const isDecimalCandidate = parts.length === 2 && parts[1].length <= 3;
+    normalized = isDecimalCandidate ? sanitized : sanitized.replace(/\./g, "");
+  }
+
+  const value = Number(normalized);
+  if (Number.isNaN(value)) {
+    return Number.NaN;
+  }
+
+  const decimalPart = normalized.split(".")[1];
+  if (decimalPart && decimalPart.length > 2) {
+    return Math.round(value * 100) / 100;
+  }
+
+  return value;
+};
+
 const recurringOptions: { label: string; value: RecurringTransaction["frequency"] }[] = [
   { label: "Weekly", value: "weekly" },
   { label: "Bi-weekly", value: "biweekly" },
@@ -198,7 +247,7 @@ export function TransactionForm({
   };
 
   const handleSubmit = () => {
-    const parsedAmount = Number(amount.replace(/,/g, "."));
+    const parsedAmount = parseAmountInput(amount);
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("Hold up", "Enter a positive amount to continue.");
@@ -210,15 +259,19 @@ export function TransactionForm({
       return;
     }
 
+    const trimmedNote = note.trim();
+    const cleanedParticipants = participants.map((person) => person.trim()).filter(Boolean);
+    const cleanedPhotos = photos.filter(Boolean);
+
     const payload: Omit<Transaction, "id"> = {
       amount: parsedAmount,
-      note: note.trim() || (selectedCategory.type === "expense" ? "Expense" : "Income"),
+      note: trimmedNote || (selectedCategory.type === "expense" ? "Expense" : "Income"),
       category: selectedCategory.name,
       type: selectedCategory.type,
       date: date.toISOString(),
-      participants: participants.length ? participants : undefined,
+      participants: cleanedParticipants,
       location: location.trim() || undefined,
-      photos: photos.length ? photos : undefined,
+      photos: cleanedPhotos,
       excludeFromReports,
     };
 

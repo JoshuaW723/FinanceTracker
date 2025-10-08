@@ -23,13 +23,28 @@ const formatCurrency = (
   value: number,
   currency: string,
   options?: Intl.NumberFormatOptions,
-) =>
-  new Intl.NumberFormat(undefined, {
+) => {
+  const maxDigits =
+    options?.maximumFractionDigits !== undefined
+      ? options.maximumFractionDigits
+      : Number.isInteger(value)
+        ? 0
+        : 2;
+  const minDigits =
+    options?.minimumFractionDigits !== undefined
+      ? options.minimumFractionDigits
+      : Number.isInteger(value)
+        ? 0
+        : Math.min(2, maxDigits);
+
+  return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency,
-    maximumFractionDigits: 0,
     ...options,
+    maximumFractionDigits: maxDigits,
+    minimumFractionDigits: minDigits,
   }).format(value);
+};
 
 const formatPercentage = (current: number, previous: number): string => {
   if (previous === 0) return "—";
@@ -199,7 +214,16 @@ export default function TransactionsScreen() {
         const query = searchTerm.toLowerCase();
         const matchesNote = transaction.note.toLowerCase().includes(query);
         const matchesCategory = transaction.category.toLowerCase().includes(query);
-        if (!matchesNote && !matchesCategory) return false;
+        const matchesLocation = transaction.location
+          ? transaction.location.toLowerCase().includes(query)
+          : false;
+        const matchesParticipants = transaction.participants
+          ? transaction.participants.some((participant) => participant.toLowerCase().includes(query))
+          : false;
+
+        if (!matchesNote && !matchesCategory && !matchesLocation && !matchesParticipants) {
+          return false;
+        }
       }
 
       return true;
@@ -483,7 +507,9 @@ export default function TransactionsScreen() {
                         else if (filter.type === "start") setStartDate(null);
                         else if (filter.type === "end") setEndDate(null);
                         else if (filter.type === "category" && filter.value) {
-                          setSelectedCategories(prev => prev.filter(c => c !== filter.value));
+                          setSelectedCategories((prev) =>
+                            prev.filter((c) => c !== filter.value),
+                          );
                         }
                       }}
                       style={styles.filterChipClose}
@@ -665,10 +691,9 @@ export default function TransactionsScreen() {
               <TextInput
                 value={draftSearchTerm}
                 onChangeText={setDraftSearchTerm}
-                placeholder="Search notes or categories"
+                placeholder="Search notes, categories, people or locations"
                 placeholderTextColor={theme.colors.textMuted}
                 style={styles.searchInput}
-                autoFocus
               />
             </View>
 
