@@ -528,12 +528,21 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       const normalizedDate = new Date(transaction.date);
       normalizedDate.setHours(0, 0, 0, 0);
 
+      const normalizedParticipants = transaction.participants
+        ? transaction.participants.map((person) => person.trim()).filter(Boolean)
+        : [];
+
+      const normalizedPhotos = transaction.photos ? transaction.photos.filter(Boolean) : [];
+
+      const normalizedAmount = Math.round(transaction.amount * 100) / 100;
+
       const payload: Transaction = {
         id: `t-${uid++}`,
-        participants: transaction.participants?.filter(Boolean) ?? [],
-        photos: transaction.photos ? [...transaction.photos] : [],
-        excludeFromReports: Boolean(transaction.excludeFromReports),
         ...transaction,
+        participants: normalizedParticipants,
+        photos: normalizedPhotos,
+        excludeFromReports: Boolean(transaction.excludeFromReports),
+        amount: normalizedAmount,
         note: transaction.note.trim(),
         date: normalizedDate.toISOString(),
       };
@@ -544,31 +553,50 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     }),
   updateTransaction: (id, updates) =>
     set((state) => ({
-      transactions: state.transactions.map((transaction) =>
-        transaction.id === id
-          ? {
-              ...transaction,
-              ...updates,
-              note: updates.note !== undefined ? updates.note.trim() : transaction.note,
-              participants: updates.participants
-                ? updates.participants.filter(Boolean)
-                : transaction.participants,
-              photos: updates.photos ? [...updates.photos] : transaction.photos,
-              excludeFromReports:
-                updates.excludeFromReports !== undefined
-                  ? Boolean(updates.excludeFromReports)
-                  : transaction.excludeFromReports,
-              date:
-                updates.date !== undefined
-                  ? (() => {
-                      const normalized = new Date(updates.date);
-                      normalized.setHours(0, 0, 0, 0);
-                      return normalized.toISOString();
-                    })()
-                  : transaction.date,
-            }
-          : transaction,
-      ),
+      transactions: state.transactions.map((transaction) => {
+        if (transaction.id !== id) {
+          return transaction;
+        }
+
+        const next: Transaction = {
+          ...transaction,
+          ...updates,
+        };
+
+        if (updates.note !== undefined) {
+          next.note = updates.note.trim();
+        }
+
+        if (updates.participants !== undefined) {
+          next.participants = updates.participants
+            .map((person) => person.trim())
+            .filter(Boolean);
+        }
+
+        if (updates.photos !== undefined) {
+          next.photos = updates.photos.filter(Boolean);
+        }
+
+        if (updates.location !== undefined) {
+          next.location = updates.location.trim() || undefined;
+        }
+
+        if (updates.excludeFromReports !== undefined) {
+          next.excludeFromReports = Boolean(updates.excludeFromReports);
+        }
+
+        if (updates.amount !== undefined) {
+          next.amount = Math.round(updates.amount * 100) / 100;
+        }
+
+        if (updates.date !== undefined) {
+          const normalized = new Date(updates.date);
+          normalized.setHours(0, 0, 0, 0);
+          next.date = normalized.toISOString();
+        }
+
+        return next;
+      }),
     })),
   removeTransaction: (id) =>
     set((state) => ({
@@ -718,17 +746,27 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       .replace(/(^-|-$)/g, "");
     const id = `cat-${slug}-${category.type}`;
 
+    const existingCategories = get().preferences.categories;
+    const normalizedValue = value.toLowerCase();
+
+    const hasDuplicate = existingCategories.some(
+      (existing) =>
+        existing.type === category.type && existing.name.trim().toLowerCase() === normalizedValue,
+    );
+
+    const hasSlugConflict = existingCategories.some((existing) => existing.id === id);
+
+    if (hasDuplicate || hasSlugConflict) {
+      return;
+    }
+
     set((state) => ({
       preferences: {
         ...state.preferences,
-        categories: state.preferences.categories.some(
-          (existing) => existing.name === value && existing.type === category.type,
-        )
-          ? state.preferences.categories
-          : [
-              ...state.preferences.categories,
-              { id, name: value, type: category.type },
-            ],
+        categories: [
+          ...state.preferences.categories,
+          { id, name: value, type: category.type },
+        ],
       },
     }));
   },

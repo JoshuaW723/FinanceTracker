@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -43,6 +43,153 @@ interface TransactionFormProps {
 }
 
 const MAX_PHOTOS = 3;
+
+type LocaleSeparators = {
+  decimal: string;
+  group: string;
+};
+
+const getLocaleSeparators = (): LocaleSeparators => {
+  const formatter = new Intl.NumberFormat(undefined);
+
+  if (typeof formatter.formatToParts !== "function") {
+    return { decimal: ".", group: "," };
+  }
+
+  try {
+    const parts = formatter.formatToParts(12345.6);
+    const group = parts.find((part) => part.type === "group")?.value ?? ",";
+    const decimal = parts.find((part) => part.type === "decimal")?.value ?? ".";
+    return { decimal, group };
+  } catch {
+    return { decimal: ".", group: "," };
+  }
+};
+
+const formatNumberForInput = (
+  value: number,
+  separators: LocaleSeparators,
+  groupingFormatter: Intl.NumberFormat,
+): string => {
+  if (Number.isNaN(value)) {
+    return "";
+  }
+
+  const fixed = value.toString();
+  const [integerPart, decimalPart] = fixed.split(".");
+  const groupedInteger = groupingFormatter.format(Number(integerPart));
+
+  if (decimalPart && decimalPart.length > 0) {
+    return `${groupedInteger}${separators.decimal}${decimalPart}`;
+  }
+
+  return groupedInteger;
+};
+
+const formatRawAmountInput = (
+  rawValue: string,
+  separators: LocaleSeparators,
+  groupingFormatter: Intl.NumberFormat,
+): string => {
+  const trimmed = rawValue.replace(/[\s']/g, "");
+  if (!trimmed) {
+    return "";
+  }
+
+  const sanitized = trimmed.replace(/[^0-9.,]/g, "");
+  if (!sanitized) {
+    return "";
+  }
+
+  const endsWithSeparator = /[.,]$/.test(trimmed);
+  const groupingRegex = new RegExp(`\\${separators.group}`, "g");
+  const normalized = sanitized.replace(groupingRegex, "");
+  const lastSeparatorIndex = Math.max(normalized.lastIndexOf("."), normalized.lastIndexOf(","));
+
+  let integerPartRaw = normalized;
+  let decimalPartRaw = "";
+  let hasDecimalSeparator = false;
+
+  if (lastSeparatorIndex !== -1) {
+    hasDecimalSeparator = true;
+    integerPartRaw = normalized.slice(0, lastSeparatorIndex);
+    decimalPartRaw = normalized.slice(lastSeparatorIndex + 1).replace(/[^0-9]/g, "");
+  }
+
+  const integerDigits = integerPartRaw.replace(/[^0-9]/g, "");
+
+  if (!integerDigits) {
+    if (decimalPartRaw) {
+      return `0${separators.decimal}${decimalPartRaw}`;
+    }
+    return endsWithSeparator ? `0${separators.decimal}` : "";
+  }
+
+  const groupedInteger = groupingFormatter.format(Number(integerDigits));
+
+  if (decimalPartRaw) {
+    return `${groupedInteger}${separators.decimal}${decimalPartRaw}`;
+  }
+
+  if (endsWithSeparator) {
+    return `${groupedInteger}${separators.decimal}`;
+  }
+
+  if (!hasDecimalSeparator && sanitized.endsWith(separators.group)) {
+    return `${groupedInteger}${separators.decimal}`;
+  }
+
+  return groupedInteger;
+};
+
+const parseAmountInput = (rawValue: string): number => {
+  const sanitized = rawValue
+    .replace(/[\s']/g, "")
+    .replace(/[^0-9,.-]/g, "");
+  if (!sanitized) {
+    return Number.NaN;
+  }
+
+  const hasComma = sanitized.includes(",");
+  const hasDot = sanitized.includes(".");
+  let normalized = sanitized;
+
+  if (hasComma && hasDot) {
+    const lastComma = sanitized.lastIndexOf(",");
+    const lastDot = sanitized.lastIndexOf(".");
+    const decimalSeparator = lastComma > lastDot ? "," : ".";
+    const thousandSeparator = decimalSeparator === "," ? "." : ",";
+    const thousandPattern = new RegExp(`\\${thousandSeparator}`, "g");
+    normalized = normalized.replace(thousandPattern, "");
+    if (decimalSeparator === ",") {
+      normalized = normalized.replace(/,/g, ".");
+    }
+  } else if (hasComma) {
+    const parts = sanitized.split(",");
+    const isDecimalCandidate =
+      (parts.length === 2 && parts[1].length <= 2) ||
+      (parts.length === 2 && parts[1].length <= 3 && parts[0].length > 2);
+
+    normalized = isDecimalCandidate ? sanitized.replace(/,/g, ".") : sanitized.replace(/,/g, "");
+  } else if (hasDot) {
+    const parts = sanitized.split(".");
+    const isDecimalCandidate = parts.length === 2 && parts[1].length <= 3;
+    normalized = isDecimalCandidate ? sanitized : sanitized.replace(/\./g, "");
+  }
+
+  const value = Number(normalized);
+  if (Number.isNaN(value)) {
+    return Number.NaN;
+  }
+
+  const decimalPart = normalized.split(".")[1];
+  if (decimalPart && decimalPart.length > 2) {
+    return Math.round(value * 100) / 100;
+  }
+
+  return value;
+};
+
 const recurringOptions: { label: string; value: RecurringTransaction["frequency"] }[] = [
   { label: "Weekly", value: "weekly" },
   { label: "Bi-weekly", value: "biweekly" },
@@ -79,8 +226,16 @@ export function TransactionForm({
     );
   };
 
-  const [amount, setAmount] = useState(
-    initialValues?.amount !== undefined ? String(initialValues.amount) : "",
+  const separators = useMemo(() => getLocaleSeparators(), []);
+  const groupingFormatter = useMemo(
+    () => new Intl.NumberFormat(undefined, { useGrouping: true, maximumFractionDigits: 0 }),
+    [],
+  );
+
+  const [amount, setAmount] = useState(() =>
+    initialValues?.amount !== undefined
+      ? formatNumberForInput(initialValues.amount, separators, groupingFormatter)
+      : "",
   );
   const [note, setNote] = useState(initialValues?.note ?? "");
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(findInitialCategory);
@@ -110,6 +265,14 @@ export function TransactionForm({
   const [recurringFrequency, setRecurringFrequency] = useState<
     RecurringTransaction["frequency"]
   >("monthly");
+
+  useEffect(() => {
+    if (initialValues?.amount !== undefined) {
+      setAmount(formatNumberForInput(initialValues.amount, separators, groupingFormatter));
+    } else {
+      setAmount("");
+    }
+  }, [groupingFormatter, initialValues?.amount, separators]);
 
   useEffect(() => {
     if (!enableRecurringOption) {
@@ -197,8 +360,15 @@ export function TransactionForm({
     setPhotos((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const handleAmountChange = useCallback(
+    (value: string) => {
+      setAmount(formatRawAmountInput(value, separators, groupingFormatter));
+    },
+    [groupingFormatter, separators],
+  );
+
   const handleSubmit = () => {
-    const parsedAmount = Number(amount.replace(/,/g, "."));
+    const parsedAmount = parseAmountInput(amount);
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("Hold up", "Enter a positive amount to continue.");
@@ -210,15 +380,19 @@ export function TransactionForm({
       return;
     }
 
+    const trimmedNote = note.trim();
+    const cleanedParticipants = participants.map((person) => person.trim()).filter(Boolean);
+    const cleanedPhotos = photos.filter(Boolean);
+
     const payload: Omit<Transaction, "id"> = {
       amount: parsedAmount,
-      note: note.trim() || (selectedCategory.type === "expense" ? "Expense" : "Income"),
+      note: trimmedNote || (selectedCategory.type === "expense" ? "Expense" : "Income"),
       category: selectedCategory.name,
       type: selectedCategory.type,
       date: date.toISOString(),
-      participants: participants.length ? participants : undefined,
+      participants: cleanedParticipants,
       location: location.trim() || undefined,
-      photos: photos.length ? photos : undefined,
+      photos: cleanedPhotos,
       excludeFromReports,
     };
 
@@ -258,7 +432,7 @@ export function TransactionForm({
             <Text style={styles.label}>Amount ({currency})</Text>
             <TextInput
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={handleAmountChange}
               keyboardType="decimal-pad"
               placeholder="0.00"
               placeholderTextColor={theme.colors.textMuted}
