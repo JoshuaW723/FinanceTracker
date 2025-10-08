@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,6 +9,7 @@ import { DonutChart } from "../../components/DonutChart";
 import { SpendingBarChart, SpendingLineChart } from "../../components/SpendingCharts";
 import { useAppTheme } from "../../theme";
 import { BudgetGoal, useFinanceStore } from "../../lib/store";
+import { truncateWords } from "../../lib/text";
 
 const formatCurrency = (
   value: number,
@@ -360,6 +361,16 @@ export default function HomeScreen() {
     [transactions],
   );
 
+  const navigateToCategory = useCallback(
+    (category: string) => {
+      router.push({
+        pathname: "/(tabs)/transactions",
+        params: { category },
+      });
+    },
+    [router],
+  );
+
   const trendDelta = previousExpense - periodExpense;
   const spentLess = trendDelta >= 0;
 
@@ -573,19 +584,33 @@ export default function HomeScreen() {
                 }))}
               />
               <View style={styles.topSpendingList}>
-                {topSpendingEntries.map((entry) => (
-                  <View key={entry.key} style={styles.topSpendingItem}>
-                    <View style={styles.topSpendingItemHeader}>
-                      <Text style={styles.topSpendingName}>{entry.label}</Text>
-                      <Text style={styles.topSpendingAmount}>
-                        {formatCurrency(entry.amount, currency)}
+                {topSpendingEntries.map((entry) => {
+                  const isCategory = entry.key !== "__others__";
+                  return (
+                    <Pressable
+                      key={entry.key}
+                      onPress={() => isCategory && navigateToCategory(entry.key)}
+                      disabled={!isCategory}
+                      accessibilityRole={isCategory ? "button" : undefined}
+                      accessibilityState={isCategory ? undefined : { disabled: true }}
+                      style={({ pressed }) => [
+                        styles.topSpendingItem,
+                        isCategory && styles.topSpendingItemInteractive,
+                        pressed && isCategory && styles.topSpendingItemPressed,
+                      ]}
+                    >
+                      <View style={styles.topSpendingItemHeader}>
+                        <Text style={styles.topSpendingName}>{entry.label}</Text>
+                        <Text style={[styles.topSpendingAmount, styles.topSpendingAmountOffset]}>
+                          {formatCurrency(entry.amount, currency)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.spendingPercentage, { color: entry.color }]}>
+                        {entry.percentage}% of spend
                       </Text>
-                    </View>
-                    <Text style={[styles.spendingPercentage, { color: entry.color }]}>
-                      {entry.percentage}% of spend
-                    </Text>
-                  </View>
-                ))}
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
           ) : (
@@ -606,7 +631,12 @@ export default function HomeScreen() {
               {upcomingRecurring.map((item) => (
                 <View key={item.id} style={styles.recurringRow}>
                   <View style={styles.recurringCopy}>
-                    <Text style={styles.recurringNote}>{item.note}</Text>
+                    <Text style={styles.recurringCategory}>{item.category}</Text>
+                    {item.note ? (
+                      <Text style={styles.recurringNote} numberOfLines={2}>
+                        {truncateWords(item.note, 10)}
+                      </Text>
+                    ) : null}
                     <Text style={styles.recurringMeta}>
                       {dayjs(item.nextOccurrence).format("MMM D")} •
                       {` ${item.frequency.charAt(0).toUpperCase()}${item.frequency.slice(1)}`}
@@ -683,7 +713,12 @@ export default function HomeScreen() {
           {recentTransactions.length ? (
             <View style={styles.recentList}>
               {recentTransactions.map((transaction) => (
-                <View key={transaction.id} style={styles.recentRow}>
+                <Pressable
+                  key={transaction.id}
+                  style={({ pressed }) => [styles.recentRow, pressed && styles.recentRowPressed]}
+                  onPress={() => router.push(`/transactions/${transaction.id}`)}
+                  accessibilityRole="button"
+                >
                   <View
                     style={[
                       styles.recentAvatar,
@@ -709,7 +744,7 @@ export default function HomeScreen() {
                     {transaction.type === "income" ? "+" : "-"}
                     {formatCurrency(transaction.amount, currency)}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           ) : (
@@ -950,6 +985,14 @@ const createStyles = (
     topSpendingItem: {
       gap: 4,
     },
+    topSpendingItemInteractive: {
+      borderRadius: theme.radii.md,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+    },
+    topSpendingItemPressed: {
+      backgroundColor: `${theme.colors.primary}1A`,
+    },
     topSpendingItemHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -962,6 +1005,9 @@ const createStyles = (
       ...theme.typography.subtitle,
       fontSize: 14,
       color: theme.colors.text,
+    },
+    topSpendingAmountOffset: {
+      marginTop: 4,
     },
     spendingPercentage: {
       ...theme.typography.subtitle,
@@ -1007,9 +1053,13 @@ const createStyles = (
       flex: 1,
       gap: 4,
     },
-    recurringNote: {
+    recurringCategory: {
       ...theme.typography.body,
       fontWeight: "600",
+    },
+    recurringNote: {
+      ...theme.typography.subtitle,
+      fontSize: 13,
     },
     recurringMeta: {
       ...theme.typography.subtitle,
@@ -1077,6 +1127,9 @@ const createStyles = (
       alignItems: "center",
       justifyContent: "space-between",
       gap: theme.spacing.md,
+    },
+    recentRowPressed: {
+      opacity: 0.7,
     },
     recentAvatar: {
       width: 42,
