@@ -50,10 +50,20 @@ type LocaleSeparators = {
 };
 
 const getLocaleSeparators = (): LocaleSeparators => {
-  const parts = new Intl.NumberFormat(undefined).formatToParts(12345.6);
-  const group = parts.find((part) => part.type === "group")?.value ?? ",";
-  const decimal = parts.find((part) => part.type === "decimal")?.value ?? ".";
-  return { decimal, group };
+  const formatter = new Intl.NumberFormat(undefined);
+
+  if (typeof formatter.formatToParts !== "function") {
+    return { decimal: ".", group: "," };
+  }
+
+  try {
+    const parts = formatter.formatToParts(12345.6);
+    const group = parts.find((part) => part.type === "group")?.value ?? ",";
+    const decimal = parts.find((part) => part.type === "decimal")?.value ?? ".";
+    return { decimal, group };
+  } catch {
+    return { decimal: ".", group: "," };
+  }
 };
 
 const formatNumberForInput = (

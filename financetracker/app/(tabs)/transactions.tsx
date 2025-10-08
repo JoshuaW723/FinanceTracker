@@ -430,14 +430,17 @@ export default function TransactionsScreen() {
     transactions,
   ]);
 
-  const closingBalanceDisplay = useMemo(
-    () =>
-      formatCurrency(summary.closingBalance, currency || "USD", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-    [currency, summary.closingBalance],
-  );
+  const closingBalanceDisplay = useMemo(() => {
+    const amount = summary.closingBalance;
+    const hasCents = !Number.isInteger(Math.round(amount * 100) / 100)
+      ? true
+      : !Number.isInteger(amount);
+
+    return formatCurrency(amount, currency || "USD", {
+      minimumFractionDigits: hasCents ? 2 : 0,
+      maximumFractionDigits: 2,
+    });
+  }, [currency, summary.closingBalance]);
 
   const balanceFontSize = useMemo(() => {
     const digitCount = closingBalanceDisplay.replace(/[^0-9]/g, "").length;
