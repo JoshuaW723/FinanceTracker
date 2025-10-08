@@ -13,11 +13,12 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import dayjs, { type Dayjs } from "dayjs";
 
 import { useAppTheme } from "../../theme";
 import { Transaction, useFinanceStore } from "../../lib/store";
+import { truncateWords } from "../../lib/text";
 
 const formatCurrency = (
   value: number,
@@ -122,6 +123,7 @@ export default function TransactionsScreen() {
   const recurringTransactions = useFinanceStore((state) => state.recurringTransactions);
   const logRecurringTransaction = useFinanceStore((state) => state.logRecurringTransaction);
   const router = useRouter();
+  const { category: categoryParam } = useLocalSearchParams<{ category?: string | string[] }>();
 
   const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -153,6 +155,30 @@ export default function TransactionsScreen() {
   const [endDate, setEndDate] = useState<Dayjs | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+
+  useEffect(() => {
+    if (!categoryParam) {
+      return;
+    }
+
+    const rawValues = Array.isArray(categoryParam) ? categoryParam : [categoryParam];
+    const sanitized = rawValues
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter((value) => value.length > 0);
+
+    if (!sanitized.length) {
+      return;
+    }
+
+    const normalized = Array.from(new Set(sanitized));
+
+    setSelectedCategories((prev) => {
+      if (prev.length === normalized.length && prev.every((value, index) => value === normalized[index])) {
+        return prev;
+      }
+      return normalized;
+    });
+  }, [categoryParam]);
 
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
@@ -637,7 +663,12 @@ export default function TransactionsScreen() {
                 {filteredRecurring.map((item) => (
                   <View key={item.id} style={styles.recurringItem}>
                     <View style={styles.recurringInfo}>
-                      <Text style={styles.recurringName}>{item.note}</Text>
+                      <Text style={styles.recurringCategory}>{item.category}</Text>
+                      {item.note ? (
+                        <Text style={styles.recurringNote} numberOfLines={2}>
+                          {truncateWords(item.note, 10)}
+                        </Text>
+                      ) : null}
                       <Text style={styles.recurringDate}>
                         {dayjs(item.nextOccurrence).format("MMM D")} • {item.frequency}
                       </Text>
@@ -688,13 +719,9 @@ export default function TransactionsScreen() {
         renderItem={({ item }) => (
           <View style={styles.dayCard}>
             {item.transactions.map((transaction, index) => {
-              const metaPieces = [transaction.category];
-              if (transaction.location) {
-                metaPieces.push(transaction.location);
-              }
-              if (transaction.participants?.length) {
-                metaPieces.push(`With ${transaction.participants.join(", ")}`);
-              }
+              const notePreview = transaction.note.trim().length
+                ? truncateWords(transaction.note, 10)
+                : "No notes";
 
               return (
                 <View key={transaction.id}>
@@ -702,6 +729,7 @@ export default function TransactionsScreen() {
                   <Pressable
                     style={styles.transactionItem}
                     onPress={() => router.push(`/transactions/${transaction.id}`)}
+                    accessibilityRole="button"
                   >
                     <View style={styles.transactionLeft}>
                       <View style={styles.categoryIcon(transaction.type)}>
@@ -710,11 +738,11 @@ export default function TransactionsScreen() {
                         </Text>
                       </View>
                       <View style={styles.transactionDetails}>
-                        <Text style={styles.transactionNote} numberOfLines={1}>
-                          {transaction.note}
+                        <Text style={styles.transactionCategory} numberOfLines={1}>
+                          {transaction.category}
                         </Text>
-                        <Text style={styles.transactionMeta} numberOfLines={1}>
-                          {metaPieces.join(" • ")}
+                        <Text style={styles.transactionNote} numberOfLines={2}>
+                          {notePreview}
                         </Text>
                       </View>
                     </View>
@@ -1168,12 +1196,16 @@ const createStyles = (theme: any, insets: any) =>
     },
     recurringInfo: {
       flex: 1,
+      gap: 4,
     },
-    recurringName: {
+    recurringCategory: {
       fontSize: 14,
       fontWeight: "600",
       color: theme.colors.text,
-      marginBottom: 2,
+    },
+    recurringNote: {
+      fontSize: 12,
+      color: theme.colors.textMuted,
     },
     recurringDate: {
       fontSize: 12,
@@ -1279,15 +1311,15 @@ const createStyles = (theme: any, insets: any) =>
     },
     transactionDetails: {
       flex: 1,
+      gap: 4,
     },
-    transactionNote: {
+    transactionCategory: {
       fontSize: 14,
       fontWeight: "600",
       color: theme.colors.text,
-      marginBottom: 2,
     },
-    transactionMeta: {
-      fontSize: 11,
+    transactionNote: {
+      fontSize: 12,
       color: theme.colors.textMuted,
     },
     transactionAmount: (type: string) => ({

@@ -41,7 +41,7 @@ const MIN_CHART_WIDTH = 320;
 const VERTICAL_PADDING = 32;
 const HORIZONTAL_PADDING = 24;
 const GRID_LINE_COUNT = 4;
-const BAR_TOOLTIP_ANCHOR_RATIO = 0.95;
+const BAR_TOOLTIP_ANCHOR_RATIO = 0.99;
 
 const buildPath = (points: { x: number; y: number }[]) => {
   if (!points.length) {

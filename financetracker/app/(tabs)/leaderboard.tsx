@@ -6,9 +6,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAppTheme } from "../../theme";
 
 const mockLeaders = [
-  { id: "1", name: "Avery Rivera", progress: "Spark Balance +18%" },
-  { id: "2", name: "Noah Kim", progress: "Saved $420 this month" },
-  { id: "3", name: "Zoe Patel", progress: "Debt free streak: 6 weeks" },
+  { id: "1", name: "Alicia Jeanelly", progress: "Spark Balance +18%" },
+  { id: "2", name: "Joshua Wibowo", progress: "Saved $420 this month" },
+  { id: "3", name: "Timothy Gratio", progress: "Debt free streak: 6 weeks" },
 ];
 
 export default function LeaderboardScreen() {
