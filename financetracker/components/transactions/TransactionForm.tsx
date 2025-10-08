@@ -101,14 +101,19 @@ const formatRawAmountInput = (
     return "";
   }
 
-  const endsWithSeparator = /[.,]$/.test(sanitized);
-  const lastSeparatorIndex = Math.max(sanitized.lastIndexOf("."), sanitized.lastIndexOf(","));
-  let integerPartRaw = sanitized;
+  const endsWithSeparator = /[.,]$/.test(trimmed);
+  const groupingRegex = new RegExp(`\\${separators.group}`, "g");
+  const normalized = sanitized.replace(groupingRegex, "");
+  const lastSeparatorIndex = Math.max(normalized.lastIndexOf("."), normalized.lastIndexOf(","));
+
+  let integerPartRaw = normalized;
   let decimalPartRaw = "";
+  let hasDecimalSeparator = false;
 
   if (lastSeparatorIndex !== -1) {
-    integerPartRaw = sanitized.slice(0, lastSeparatorIndex);
-    decimalPartRaw = sanitized.slice(lastSeparatorIndex + 1).replace(/[^0-9]/g, "");
+    hasDecimalSeparator = true;
+    integerPartRaw = normalized.slice(0, lastSeparatorIndex);
+    decimalPartRaw = normalized.slice(lastSeparatorIndex + 1).replace(/[^0-9]/g, "");
   }
 
   const integerDigits = integerPartRaw.replace(/[^0-9]/g, "");
@@ -127,6 +132,10 @@ const formatRawAmountInput = (
   }
 
   if (endsWithSeparator) {
+    return `${groupedInteger}${separators.decimal}`;
+  }
+
+  if (!hasDecimalSeparator && sanitized.endsWith(separators.group)) {
     return `${groupedInteger}${separators.decimal}`;
   }
 
