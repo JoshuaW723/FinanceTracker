@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -43,6 +43,85 @@ interface TransactionFormProps {
 }
 
 const MAX_PHOTOS = 3;
+
+type LocaleSeparators = {
+  decimal: string;
+  group: string;
+};
+
+const getLocaleSeparators = (): LocaleSeparators => {
+  const parts = new Intl.NumberFormat(undefined).formatToParts(12345.6);
+  const group = parts.find((part) => part.type === "group")?.value ?? ",";
+  const decimal = parts.find((part) => part.type === "decimal")?.value ?? ".";
+  return { decimal, group };
+};
+
+const formatNumberForInput = (
+  value: number,
+  separators: LocaleSeparators,
+  groupingFormatter: Intl.NumberFormat,
+): string => {
+  if (Number.isNaN(value)) {
+    return "";
+  }
+
+  const fixed = value.toString();
+  const [integerPart, decimalPart] = fixed.split(".");
+  const groupedInteger = groupingFormatter.format(Number(integerPart));
+
+  if (decimalPart && decimalPart.length > 0) {
+    return `${groupedInteger}${separators.decimal}${decimalPart}`;
+  }
+
+  return groupedInteger;
+};
+
+const formatRawAmountInput = (
+  rawValue: string,
+  separators: LocaleSeparators,
+  groupingFormatter: Intl.NumberFormat,
+): string => {
+  const trimmed = rawValue.replace(/[\s']/g, "");
+  if (!trimmed) {
+    return "";
+  }
+
+  const sanitized = trimmed.replace(/[^0-9.,]/g, "");
+  if (!sanitized) {
+    return "";
+  }
+
+  const endsWithSeparator = /[.,]$/.test(sanitized);
+  const lastSeparatorIndex = Math.max(sanitized.lastIndexOf("."), sanitized.lastIndexOf(","));
+  let integerPartRaw = sanitized;
+  let decimalPartRaw = "";
+
+  if (lastSeparatorIndex !== -1) {
+    integerPartRaw = sanitized.slice(0, lastSeparatorIndex);
+    decimalPartRaw = sanitized.slice(lastSeparatorIndex + 1).replace(/[^0-9]/g, "");
+  }
+
+  const integerDigits = integerPartRaw.replace(/[^0-9]/g, "");
+
+  if (!integerDigits) {
+    if (decimalPartRaw) {
+      return `0${separators.decimal}${decimalPartRaw}`;
+    }
+    return endsWithSeparator ? `0${separators.decimal}` : "";
+  }
+
+  const groupedInteger = groupingFormatter.format(Number(integerDigits));
+
+  if (decimalPartRaw) {
+    return `${groupedInteger}${separators.decimal}${decimalPartRaw}`;
+  }
+
+  if (endsWithSeparator) {
+    return `${groupedInteger}${separators.decimal}`;
+  }
+
+  return groupedInteger;
+};
 
 const parseAmountInput = (rawValue: string): number => {
   const sanitized = rawValue
@@ -128,8 +207,16 @@ export function TransactionForm({
     );
   };
 
-  const [amount, setAmount] = useState(
-    initialValues?.amount !== undefined ? String(initialValues.amount) : "",
+  const separators = useMemo(() => getLocaleSeparators(), []);
+  const groupingFormatter = useMemo(
+    () => new Intl.NumberFormat(undefined, { useGrouping: true, maximumFractionDigits: 0 }),
+    [],
+  );
+
+  const [amount, setAmount] = useState(() =>
+    initialValues?.amount !== undefined
+      ? formatNumberForInput(initialValues.amount, separators, groupingFormatter)
+      : "",
   );
   const [note, setNote] = useState(initialValues?.note ?? "");
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(findInitialCategory);
@@ -159,6 +246,14 @@ export function TransactionForm({
   const [recurringFrequency, setRecurringFrequency] = useState<
     RecurringTransaction["frequency"]
   >("monthly");
+
+  useEffect(() => {
+    if (initialValues?.amount !== undefined) {
+      setAmount(formatNumberForInput(initialValues.amount, separators, groupingFormatter));
+    } else {
+      setAmount("");
+    }
+  }, [groupingFormatter, initialValues?.amount, separators]);
 
   useEffect(() => {
     if (!enableRecurringOption) {
@@ -246,6 +341,13 @@ export function TransactionForm({
     setPhotos((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const handleAmountChange = useCallback(
+    (value: string) => {
+      setAmount(formatRawAmountInput(value, separators, groupingFormatter));
+    },
+    [groupingFormatter, separators],
+  );
+
   const handleSubmit = () => {
     const parsedAmount = parseAmountInput(amount);
 
@@ -311,7 +413,7 @@ export function TransactionForm({
             <Text style={styles.label}>Amount ({currency})</Text>
             <TextInput
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={handleAmountChange}
               keyboardType="decimal-pad"
               placeholder="0.00"
               placeholderTextColor={theme.colors.textMuted}

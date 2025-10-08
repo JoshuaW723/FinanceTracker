@@ -46,6 +46,45 @@ const formatCurrency = (
   }).format(value);
 };
 
+const parseAmountFilterValue = (value: string): number | undefined => {
+  if (!value.trim()) {
+    return undefined;
+  }
+
+  const sanitized = value.replace(/[\s']/g, "").replace(/[^0-9,.-]/g, "");
+  if (!sanitized) {
+    return undefined;
+  }
+
+  const hasComma = sanitized.includes(",");
+  const hasDot = sanitized.includes(".");
+  let normalized = sanitized;
+
+  if (hasComma && hasDot) {
+    const lastComma = sanitized.lastIndexOf(",");
+    const lastDot = sanitized.lastIndexOf(".");
+    const decimalSeparator = lastComma > lastDot ? "," : ".";
+    const thousandSeparator = decimalSeparator === "," ? "." : ",";
+    const thousandPattern = new RegExp(`\\${thousandSeparator}`, "g");
+    normalized = normalized.replace(thousandPattern, "");
+    if (decimalSeparator === ",") {
+      normalized = normalized.replace(/,/g, ".");
+    }
+  } else if (hasComma) {
+    const parts = sanitized.split(",");
+    const isDecimalCandidate =
+      parts.length === 2 && (parts[1].length <= 3 || parts[0].length > 2);
+    normalized = isDecimalCandidate ? sanitized.replace(/,/g, ".") : sanitized.replace(/,/g, "");
+  } else if (hasDot) {
+    const parts = sanitized.split(".");
+    const isDecimalCandidate = parts.length === 2 && parts[1].length <= 3;
+    normalized = isDecimalCandidate ? sanitized : sanitized.replace(/\./g, "");
+  }
+
+  const parsed = Number(normalized);
+  return Number.isNaN(parsed) ? undefined : parsed;
+};
+
 const formatPercentage = (current: number, previous: number): string => {
   if (previous === 0) return "—";
   const change = ((current - previous) / Math.abs(previous)) * 100;
@@ -162,11 +201,21 @@ export default function TransactionsScreen() {
     if (searchTerm) {
       filters.push({ key: `search-${searchTerm}`, label: searchTerm, type: "search" });
     }
-    if (minAmount.trim()) {
-      filters.push({ key: "min", label: `Min ${formatCurrency(Number(minAmount), currency || "USD")}`, type: "min" });
+    const minAmountValue = parseAmountFilterValue(minAmount);
+    if (minAmountValue !== undefined) {
+      filters.push({
+        key: "min",
+        label: `Min ${formatCurrency(minAmountValue, currency || "USD")}`,
+        type: "min",
+      });
     }
-    if (maxAmount.trim()) {
-      filters.push({ key: "max", label: `Max ${formatCurrency(Number(maxAmount), currency || "USD")}`, type: "max" });
+    const maxAmountValue = parseAmountFilterValue(maxAmount);
+    if (maxAmountValue !== undefined) {
+      filters.push({
+        key: "max",
+        label: `Max ${formatCurrency(maxAmountValue, currency || "USD")}`,
+        type: "max",
+      });
     }
     if (startDate) {
       filters.push({ key: "start", label: startDate.format("MMM D"), type: "start" });
@@ -186,23 +235,25 @@ export default function TransactionsScreen() {
     const period = periodOptions.find((option) => option.key === selectedPeriod) ?? periodOptions[periodOptions.length - 1];
     const { start, end } = period.range();
 
-    const minAmountValue = Number(minAmount) || 0;
-    const maxAmountValue = Number(maxAmount) || Number.POSITIVE_INFINITY;
+    const periodTransactions = transactions.filter((transaction) => {
+      const date = dayjs(transaction.date);
+      return !date.isBefore(start) && !date.isAfter(end);
+    });
 
-    const filtered = transactions.filter((transaction) => {
+    const minAmountValue = parseAmountFilterValue(minAmount);
+    const maxAmountValue = parseAmountFilterValue(maxAmount);
+
+    const filtered = periodTransactions.filter((transaction) => {
       const date = dayjs(transaction.date);
 
-      // Period filter
-      if (date.isBefore(start) || date.isAfter(end)) return false;
-      
       // Date range filters
       if (startDate && date.isBefore(startDate)) return false;
       if (endDate && date.isAfter(endDate)) return false;
-      
+
       // Amount filters
       const amount = transaction.amount;
-      if (minAmount.trim() && amount < minAmountValue) return false;
-      if (maxAmount.trim() && amount > maxAmountValue) return false;
+      if (minAmountValue !== undefined && amount < minAmountValue) return false;
+      if (maxAmountValue !== undefined && amount > maxAmountValue) return false;
       
       // Category filter
       if (selectedCategories.length && !selectedCategories.includes(transaction.category)) {
@@ -229,7 +280,7 @@ export default function TransactionsScreen() {
       return true;
     });
 
-    const reportable = filtered.filter((transaction) => !transaction.excludeFromReports);
+    const reportable = periodTransactions.filter((transaction) => !transaction.excludeFromReports);
 
     const parseTransactionId = (id: string) => {
       const match = id.match(/(\d+)$/);
@@ -379,6 +430,23 @@ export default function TransactionsScreen() {
     transactions,
   ]);
 
+  const closingBalanceDisplay = useMemo(
+    () =>
+      formatCurrency(summary.closingBalance, currency || "USD", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    [currency, summary.closingBalance],
+  );
+
+  const balanceFontSize = useMemo(() => {
+    const digitCount = closingBalanceDisplay.replace(/[^0-9]/g, "").length;
+    if (digitCount <= 6) return 32;
+    if (digitCount <= 9) return 28;
+    if (digitCount <= 12) return 24;
+    return 20;
+  }, [closingBalanceDisplay]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <SectionList
@@ -394,9 +462,7 @@ export default function TransactionsScreen() {
               <View style={styles.balanceHeader}>
                 <View>
                   <Text style={styles.balanceLabel}>Current Balance</Text>
-                  <Text style={styles.balanceValue}>
-                    {formatCurrency(summary.closingBalance, currency || "USD")}
-                  </Text>
+                  <Text style={styles.balanceValue(balanceFontSize)}>{closingBalanceDisplay}</Text>
                 </View>
                 <View style={styles.changeBadge(summary.net)}>
                   <Ionicons
@@ -857,11 +923,11 @@ const createStyles = (theme: any, insets: any) =>
       letterSpacing: 0.5,
       marginBottom: 4,
     },
-    balanceValue: {
-      fontSize: 32,
+    balanceValue: (fontSize: number) => ({
+      fontSize,
       fontWeight: "700",
       color: theme.colors.text,
-    },
+    }),
     changeBadge: (positive: number) => ({
       flexDirection: "row",
       alignItems: "center",
@@ -1366,9 +1432,9 @@ const createStyles = (theme: any, insets: any) =>
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 20,
-      backgroundColor: selected ? theme.colors.primary : theme.colors.surface,
+      backgroundColor: selected ? theme.colors.primaryMuted : theme.colors.surface,
       borderWidth: 1,
-      borderColor: selected ? theme.colors.primary : theme.colors.border,
+      borderColor: selected ? theme.colors.primaryMuted : theme.colors.border,
     }),
     categoryOptionText: (selected: boolean) => ({
       fontSize: 13,
