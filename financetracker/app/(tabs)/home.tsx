@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 
 import { DonutChart } from "../../components/DonutChart";
 import { SpendingBarChart, SpendingLineChart } from "../../components/SpendingCharts";
@@ -361,16 +361,6 @@ export default function HomeScreen() {
     [transactions],
   );
 
-  const navigateToCategory = useCallback(
-    (category: string) => {
-      router.push({
-        pathname: "/(tabs)/transactions",
-        params: { category },
-      });
-    },
-    [router],
-  );
-
   const trendDelta = previousExpense - periodExpense;
   const spentLess = trendDelta >= 0;
 
@@ -586,19 +576,8 @@ export default function HomeScreen() {
               <View style={styles.topSpendingList}>
                 {topSpendingEntries.map((entry) => {
                   const isCategory = entry.key !== "__others__";
-                  return (
-                    <Pressable
-                      key={entry.key}
-                      onPress={() => isCategory && navigateToCategory(entry.key)}
-                      disabled={!isCategory}
-                      accessibilityRole={isCategory ? "button" : undefined}
-                      accessibilityState={isCategory ? undefined : { disabled: true }}
-                      style={({ pressed }) => [
-                        styles.topSpendingItem,
-                        isCategory && styles.topSpendingItemInteractive,
-                        pressed && isCategory && styles.topSpendingItemPressed,
-                      ]}
-                    >
+                  const content = (
+                    <>
                       <View style={styles.topSpendingItemHeader}>
                         <Text style={styles.topSpendingName}>{entry.label}</Text>
                         <Text style={[styles.topSpendingAmount, styles.topSpendingAmountOffset]}>
@@ -608,7 +587,39 @@ export default function HomeScreen() {
                       <Text style={[styles.spendingPercentage, { color: entry.color }]}>
                         {entry.percentage}% of spend
                       </Text>
-                    </Pressable>
+                    </>
+                  );
+
+                  if (!isCategory) {
+                    return (
+                      <View
+                        key={entry.key}
+                        style={styles.topSpendingItem}
+                        accessibilityRole="text"
+                        accessibilityLabel={`${entry.label}: ${formatCurrency(entry.amount, currency)}, ${entry.percentage}% of spend`}
+                      >
+                        {content}
+                      </View>
+                    );
+                  }
+
+                  return (
+                    <Link
+                      key={entry.key}
+                      href={{ pathname: "/(tabs)/transactions", params: { category: entry.key } }}
+                      asChild
+                    >
+                      <Pressable
+                        accessibilityRole="button"
+                        style={({ pressed }) => [
+                          styles.topSpendingItem,
+                          styles.topSpendingItemInteractive,
+                          pressed && styles.topSpendingItemPressed,
+                        ]}
+                      >
+                        {content}
+                      </Pressable>
+                    </Link>
                   );
                 })}
               </View>
