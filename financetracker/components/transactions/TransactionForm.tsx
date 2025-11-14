@@ -22,12 +22,14 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useAppTheme } from "../../theme";
 import {
   Category,
+  DEFAULT_ACCOUNT_ID,
   DEFAULT_CATEGORIES,
   RecurringTransaction,
   Transaction,
   TransactionType,
   useFinanceStore,
 } from "../../lib/store";
+import { AccountPicker } from "../accounts/AccountPicker";
 
 interface TransactionFormProps {
   title: string;
@@ -239,6 +241,13 @@ export function TransactionForm({
   );
   const [note, setNote] = useState(initialValues?.note ?? "");
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(findInitialCategory);
+  const [transactionType, setTransactionType] = useState<TransactionType>(() => {
+    if (initialValues?.type) {
+      return initialValues.type;
+    }
+    const initialCategory = findInitialCategory();
+    return initialCategory?.type ?? "expense";
+  });
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [date, setDate] = useState(() => {
     const base = initialValues?.date ? new Date(initialValues.date) : new Date();
@@ -261,6 +270,8 @@ export function TransactionForm({
   const [excludeFromReports, setExcludeFromReports] = useState(
     Boolean(initialValues?.excludeFromReports),
   );
+  const [accountId, setAccountId] = useState(initialValues?.accountId ?? DEFAULT_ACCOUNT_ID);
+  const [toAccountId, setToAccountId] = useState<string | null>(initialValues?.toAccountId ?? null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<
     RecurringTransaction["frequency"]
@@ -279,6 +290,22 @@ export function TransactionForm({
       setIsRecurring(false);
     }
   }, [enableRecurringOption]);
+
+  useEffect(() => {
+    if (transactionType === "transfer") {
+      return;
+    }
+
+    if (selectedCategory && selectedCategory.type !== transactionType) {
+      setTransactionType(selectedCategory.type);
+    }
+  }, [selectedCategory, transactionType]);
+
+  useEffect(() => {
+    if (transactionType !== "transfer" && toAccountId) {
+      setToAccountId(null);
+    }
+  }, [transactionType, toAccountId]);
 
   const noteWordCount = useMemo(() => {
     if (!note.trim()) return 0;
@@ -360,6 +387,18 @@ export function TransactionForm({
     setPhotos((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const handleChangeType = (nextType: TransactionType) => {
+    setTransactionType(nextType);
+    if (nextType === "transfer") {
+      setSelectedCategory(null);
+      return;
+    }
+
+    if (selectedCategory && selectedCategory.type !== nextType) {
+      setSelectedCategory(null);
+    }
+  };
+
   const handleAmountChange = useCallback(
     (value: string) => {
       setAmount(formatRawAmountInput(value, separators, groupingFormatter));
@@ -375,25 +414,55 @@ export function TransactionForm({
       return;
     }
 
-    if (!selectedCategory) {
+    if (!accountId) {
+      Alert.alert("Select an account", "Pick where this transaction should be recorded.");
+      return;
+    }
+
+    if (transactionType !== "transfer" && !selectedCategory) {
       Alert.alert("Choose a category", "Pick a category to classify this transaction.");
       return;
+    }
+
+    if (transactionType === "transfer") {
+      if (!toAccountId) {
+        Alert.alert("Need a destination", "Pick which account you're moving money to.");
+        return;
+      }
+
+      if (toAccountId === accountId) {
+        Alert.alert("Check accounts", "Source and destination accounts must be different.");
+        return;
+      }
     }
 
     const trimmedNote = note.trim();
     const cleanedParticipants = participants.map((person) => person.trim()).filter(Boolean);
     const cleanedPhotos = photos.filter(Boolean);
 
+    const resolvedCategory =
+      transactionType === "transfer"
+        ? initialValues?.category || "Transfer"
+        : selectedCategory?.name ?? initialValues?.category ?? "General";
+    const fallbackNote =
+      transactionType === "transfer"
+        ? "Transfer"
+        : transactionType === "expense"
+          ? "Expense"
+          : "Income";
+
     const payload: Omit<Transaction, "id"> = {
       amount: parsedAmount,
-      note: trimmedNote || (selectedCategory.type === "expense" ? "Expense" : "Income"),
-      category: selectedCategory.name,
-      type: selectedCategory.type,
+      note: trimmedNote || fallbackNote,
+      category: resolvedCategory,
+      type: transactionType === "transfer" ? "transfer" : (selectedCategory?.type ?? transactionType),
       date: date.toISOString(),
       participants: cleanedParticipants,
       location: location.trim() || undefined,
       photos: cleanedPhotos,
       excludeFromReports,
+      accountId,
+      toAccountId: transactionType === "transfer" ? toAccountId : null,
     };
 
     onSubmit(payload);
@@ -441,33 +510,79 @@ export function TransactionForm({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Category</Text>
-            <Pressable
-              style={[styles.input, styles.categoryButton]}
-              onPress={() => setCategoryModalVisible(true)}
-            >
-              <Text
-                style={selectedCategory ? styles.categoryButtonText : styles.categoryButtonPlaceholder}
-              >
-                {selectedCategory ? selectedCategory.name : "Choose a category"}
-              </Text>
-              <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
-            </Pressable>
-            {selectedCategory ? (
-              <View style={styles.typeBadge(selectedCategory.type)}>
-                <Ionicons
-                  name={selectedCategory.type === "income" ? "arrow-down-circle" : "arrow-up-circle"}
-                  size={14}
-                  color={theme.colors.text}
-                />
-                <Text style={styles.typeBadgeText}>
-                  {selectedCategory.type === "expense" ? "Expense" : "Income"}
-                </Text>
-              </View>
-            ) : (
-              <Text style={styles.helperText}>Selecting a category sets whether this is income or expense.</Text>
-            )}
+            <Text style={styles.label}>Transaction type</Text>
+            <View style={styles.typeRow}>
+              {(["expense", "income", "transfer"] as TransactionType[]).map((typeOption) => {
+                const active = transactionType === typeOption;
+                return (
+                  <Pressable
+                    key={typeOption}
+                    style={styles.typeChip(active, typeOption)}
+                    onPress={() => handleChangeType(typeOption)}
+                  >
+                    <Text style={styles.typeChipText(active)}>
+                      {typeOption === "expense"
+                        ? "Expense"
+                        : typeOption === "income"
+                          ? "Income"
+                          : "Transfer"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
+
+          <AccountPicker
+            label="From account"
+            value={accountId}
+            onChange={setAccountId}
+            helperText="Money will move out of this account."
+            currency={currency}
+          />
+
+          {transactionType === "transfer" && (
+            <AccountPicker
+              label="To account"
+              value={toAccountId}
+              onChange={setToAccountId}
+              placeholder="Choose a destination account"
+              helperText="Money lands here."
+              currency={currency}
+              excludeAccountIds={accountId ? [accountId] : undefined}
+            />
+          )}
+
+          {transactionType !== "transfer" && (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Category</Text>
+              <Pressable
+                style={[styles.input, styles.categoryButton]}
+                onPress={() => setCategoryModalVisible(true)}
+              >
+                <Text
+                  style={selectedCategory ? styles.categoryButtonText : styles.categoryButtonPlaceholder}
+                >
+                  {selectedCategory ? selectedCategory.name : "Choose a category"}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+              </Pressable>
+              {selectedCategory ? (
+                <View style={styles.typeBadge(selectedCategory.type)}>
+                  <Ionicons
+                    name={selectedCategory.type === "income" ? "arrow-down-circle" : "arrow-up-circle"}
+                    size={14}
+                    color={theme.colors.text}
+                  />
+                  <Text style={styles.typeBadgeText}>
+                    {selectedCategory.type === "expense" ? "Expense" : "Income"}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.helperText}>Categories match the selected type.</Text>
+              )}
+            </View>
+          )}
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Note</Text>
@@ -687,12 +802,14 @@ export function TransactionForm({
             contentContainerStyle={styles.modalContent}
             showsVerticalScrollIndicator={false}
           >
-            {(["expense", "income"] as TransactionType[]).map((type) => {
-              const entries = availableCategories.filter((category) => category.type === type);
-              if (!entries.length) {
-                return (
-                  <View key={type} style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>
+            {(["expense", "income"] as TransactionType[])
+              .filter((type) => type === transactionType)
+              .map((type) => {
+                const entries = availableCategories.filter((category) => category.type === type);
+                if (!entries.length) {
+                  return (
+                    <View key={type} style={styles.modalSection}>
+                      <Text style={styles.modalSectionTitle}>
                       {type === "expense" ? "Expenses" : "Income"}
                     </Text>
                     <Text style={styles.helperText}>No categories available yet.</Text>
@@ -780,6 +897,30 @@ const createStyles = (
       textTransform: "uppercase",
       letterSpacing: 1.2,
     },
+    typeRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.sm,
+    },
+    typeChip: (active: boolean, type: TransactionType) => ({
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radii.pill,
+      borderWidth: 1,
+      borderColor: active ? theme.colors.primary : theme.colors.border,
+      backgroundColor: active
+        ? type === "income"
+          ? `${theme.colors.success}22`
+          : type === "expense"
+            ? `${theme.colors.danger}22`
+            : `${theme.colors.primary}22`
+        : theme.colors.surface,
+    }),
+    typeChipText: (active: boolean) => ({
+      fontSize: 14,
+      fontWeight: "600",
+      color: active ? theme.colors.text : theme.colors.textMuted,
+    }),
     input: {
       ...theme.components.input,
       fontSize: 16,

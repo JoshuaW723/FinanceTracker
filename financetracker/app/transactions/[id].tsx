@@ -14,7 +14,7 @@ import { Image } from "expo-image";
 import dayjs from "dayjs";
 
 import { useAppTheme } from "../../theme";
-import { useFinanceStore } from "../../lib/store";
+import { useFinanceStore, type TransactionType } from "../../lib/store";
 
 const formatCurrency = (
   value: number,
@@ -41,6 +41,20 @@ export default function TransactionDetailsScreen() {
   );
   const duplicateTransaction = useFinanceStore((state) => state.duplicateTransaction);
   const removeTransaction = useFinanceStore((state) => state.removeTransaction);
+  const accounts = useFinanceStore((state) => state.accounts);
+
+  const accountLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((account) => map.set(account.id, account.name));
+    return map;
+  }, [accounts]);
+
+  const resolveAccountName = (accountId?: string | null) => {
+    if (!accountId) {
+      return "Unassigned account";
+    }
+    return accountLookup.get(accountId) ?? "Unknown account";
+  };
 
   if (!transaction) {
     return (
@@ -81,6 +95,19 @@ export default function TransactionDetailsScreen() {
 
   const participants = transaction.participants ?? [];
   const photos = transaction.photos ?? [];
+  const isTransfer = transaction.type === "transfer";
+  const fromAccountName = resolveAccountName(transaction.accountId);
+  const toAccountName = isTransfer ? resolveAccountName(transaction.toAccountId) : null;
+  const typeIcon = transaction.type === "income"
+    ? "trending-up"
+    : transaction.type === "expense"
+      ? "trending-down"
+      : "swap-horizontal";
+  const typeLabel = transaction.type === "transfer"
+    ? "Transfer"
+    : transaction.type === "income"
+      ? "Income"
+      : "Expense";
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -108,14 +135,8 @@ export default function TransactionDetailsScreen() {
               {formatCurrency(transaction.amount, currency || "USD")}
             </Text>
             <View style={styles.typeBadge(transaction.type)}>
-              <Ionicons
-                name={transaction.type === "income" ? "trending-up" : "trending-down"}
-                size={14}
-                color={theme.colors.text}
-              />
-              <Text style={styles.typeBadgeText}>
-                {transaction.type === "income" ? "Income" : "Expense"}
-              </Text>
+              <Ionicons name={typeIcon} size={14} color={theme.colors.text} />
+              <Text style={styles.typeBadgeText}>{typeLabel}</Text>
             </View>
           </View>
           <View style={styles.summaryMeta}>
@@ -129,6 +150,18 @@ export default function TransactionDetailsScreen() {
               <Text style={styles.metaLabel}>Date</Text>
               <Text style={styles.metaValue}>{dayjs(transaction.date).format("MMM D, YYYY")}</Text>
             </View>
+            <View style={styles.metaRow}>
+              <Ionicons name="wallet" size={16} color={theme.colors.textMuted} />
+              <Text style={styles.metaLabel}>{isTransfer ? "From" : "Account"}</Text>
+              <Text style={styles.metaValue}>{fromAccountName}</Text>
+            </View>
+            {isTransfer && (
+              <View style={styles.metaRow}>
+                <Ionicons name="swap-horizontal" size={16} color={theme.colors.textMuted} />
+                <Text style={styles.metaLabel}>To</Text>
+                <Text style={styles.metaValue}>{toAccountName}</Text>
+              </View>
+            )}
           </View>
           {transaction.excludeFromReports && (
             <View style={styles.excludedBanner}>
@@ -243,12 +276,17 @@ const createStyles = (
       alignItems: "center",
       justifyContent: "space-between",
     },
-    amount: (type: string) => ({
+    amount: (type: TransactionType) => ({
       fontSize: 28,
       fontWeight: "700",
-      color: type === "income" ? theme.colors.success : theme.colors.danger,
+      color:
+        type === "income"
+          ? theme.colors.success
+          : type === "expense"
+            ? theme.colors.danger
+            : theme.colors.text,
     }),
-    typeBadge: (type: string) => ({
+    typeBadge: (type: TransactionType) => ({
       flexDirection: "row",
       alignItems: "center",
       gap: theme.spacing.xs,
@@ -256,7 +294,11 @@ const createStyles = (
       paddingVertical: theme.spacing.xs,
       borderRadius: theme.radii.pill,
       backgroundColor:
-        type === "income" ? `${theme.colors.success}22` : `${theme.colors.danger}22`,
+        type === "income"
+          ? `${theme.colors.success}22`
+          : type === "expense"
+            ? `${theme.colors.danger}22`
+            : `${theme.colors.primary}22`,
     }),
     typeBadgeText: {
       fontSize: 12,
