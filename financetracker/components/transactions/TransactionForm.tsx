@@ -319,14 +319,6 @@ export function TransactionForm({
     }
   }, [transactionType, toAccountId]);
 
-  const noteWordCount = useMemo(() => {
-    if (!note.trim()) return 0;
-    return note
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean).length;
-  }, [note]);
-
   const handleNoteChange = (value: string) => {
     const words = value
       .trim()
@@ -522,7 +514,6 @@ export function TransactionForm({
             <View style={styles.heroHeader}>
               <View>
                 <Text style={styles.heroLabel}>Amount</Text>
-                <Text style={styles.heroSubtitle}>Log how much is moving</Text>
               </View>
               <View style={styles.currencyBadge}>
                 <Ionicons name="cash-outline" size={16} color={theme.colors.primary} />
@@ -539,14 +530,12 @@ export function TransactionForm({
                 style={styles.heroAmountInput}
               />
             </View>
-            <Text style={styles.heroHelper}>We respect your locale separators automatically.</Text>
           </View>
 
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View>
                 <Text style={styles.sectionTitle}>Type & category</Text>
-                <Text style={styles.sectionSubtitle}>Classify this transaction beautifully</Text>
               </View>
               <Ionicons name="pricetag-outline" size={20} color={theme.colors.textMuted} />
             </View>
@@ -583,11 +572,6 @@ export function TransactionForm({
                   <Text style={styles.selectionValue}>
                     {selectedCategory ? selectedCategory.name : "Choose a category"}
                   </Text>
-                  <Text style={styles.selectionHelper}>
-                    {selectedCategory
-                      ? `Marked as ${selectedCategory.type === "income" ? "income" : "expense"}`
-                      : "Categories adapt to the selected type."}
-                  </Text>
                 </View>
                 <View style={styles.selectionIcon}>
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
@@ -607,7 +591,6 @@ export function TransactionForm({
                     {selectedCategory.type === "expense" ? "Expense" : "Income"}
                   </Text>
                 </View>
-                <Text style={styles.helperText}>Perfect for this transaction.</Text>
               </View>
             )}
           </View>
@@ -616,7 +599,6 @@ export function TransactionForm({
             <View style={styles.sectionHeader}>
               <View>
                 <Text style={styles.sectionTitle}>Accounts</Text>
-                <Text style={styles.sectionSubtitle}>Control where the money comes and goes</Text>
               </View>
               <Ionicons name="wallet-outline" size={20} color={theme.colors.textMuted} />
             </View>
@@ -625,7 +607,6 @@ export function TransactionForm({
               label="From account"
               value={accountId}
               onChange={setAccountId}
-              helperText="Money will move out of this account."
               currency={currency}
             />
 
@@ -635,7 +616,6 @@ export function TransactionForm({
                 value={toAccountId}
                 onChange={setToAccountId}
                 placeholder="Choose a destination account"
-                helperText="Money lands here."
                 currency={currency}
                 excludeAccountIds={accountId ? [accountId] : undefined}
               />
@@ -646,7 +626,6 @@ export function TransactionForm({
             <View style={styles.sectionHeader}>
               <View>
                 <Text style={styles.sectionTitle}>Notes & schedule</Text>
-                <Text style={styles.sectionSubtitle}>Capture context and timing</Text>
               </View>
               <Ionicons name="calendar-outline" size={20} color={theme.colors.textMuted} />
             </View>
@@ -661,10 +640,6 @@ export function TransactionForm({
                 multiline
                 style={[styles.input, styles.noteInput]}
               />
-              <View style={styles.helperRow}>
-                <Text style={styles.helperText}>Up to 100 words</Text>
-                <Text style={styles.helperText}>{noteWordCount}/100</Text>
-              </View>
             </View>
 
             <View style={styles.sectionDivider} />
@@ -733,9 +708,6 @@ export function TransactionForm({
                           );
                         })}
                       </View>
-                      <Text style={styles.helperText}>
-                        Next occurrence will be on {dayjs(date).format("MMM D, YYYY")}.
-                      </Text>
                     </View>
                   )}
                 </View>
@@ -1014,11 +986,6 @@ const createStyles = (
       fontWeight: "600",
       color: theme.colors.text,
     },
-    heroSubtitle: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-      marginTop: 2,
-    },
     currencyBadge: {
       flexDirection: "row",
       alignItems: "center",
@@ -1051,11 +1018,6 @@ const createStyles = (
       textAlign: "center",
       paddingVertical: theme.spacing.sm,
     },
-    heroHelper: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-      textAlign: "center",
-    },
     sectionCard: {
       ...theme.components.card,
       borderRadius: theme.radii.lg,
@@ -1072,11 +1034,6 @@ const createStyles = (
       fontSize: 16,
       fontWeight: "700",
       color: theme.colors.text,
-    },
-    sectionSubtitle: {
-      fontSize: 13,
-      color: theme.colors.textMuted,
-      marginTop: 2,
     },
     fieldGroup: {
       gap: theme.spacing.sm,
@@ -1142,10 +1099,6 @@ const createStyles = (
       fontWeight: "600",
       color: theme.colors.text,
     },
-    selectionHelper: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-    },
     selectionIcon: {
       width: 32,
       height: 32,
@@ -1181,11 +1134,6 @@ const createStyles = (
       color: theme.colors.text,
       textTransform: "uppercase",
       letterSpacing: 1,
-    },
-    helperRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
     },
     helperText: {
       fontSize: 12,
