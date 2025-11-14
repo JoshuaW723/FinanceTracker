@@ -319,14 +319,6 @@ export function TransactionForm({
     }
   }, [transactionType, toAccountId]);
 
-  const noteWordCount = useMemo(() => {
-    if (!note.trim()) return 0;
-    return note
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean).length;
-  }, [note]);
-
   const handleNoteChange = (value: string) => {
     const words = value
       .trim()
@@ -494,6 +486,10 @@ export function TransactionForm({
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <View style={styles.backgroundAccent} pointerEvents="none">
+        <View style={styles.accentBlobPrimary} />
+        <View style={styles.accentBlobSecondary} />
+      </View>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -514,20 +510,36 @@ export function TransactionForm({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Amount ({currency})</Text>
-            <TextInput
-              value={amount}
-              onChangeText={handleAmountChange}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              placeholderTextColor={theme.colors.textMuted}
-              style={styles.input}
-            />
+          <View style={styles.heroCard}>
+            <View style={styles.heroHeader}>
+              <View>
+                <Text style={styles.heroLabel}>Amount</Text>
+              </View>
+              <View style={styles.currencyBadge}>
+                <Ionicons name="cash-outline" size={16} color={theme.colors.primary} />
+                <Text style={styles.currencyBadgeText}>{currency}</Text>
+              </View>
+            </View>
+            <View style={styles.heroAmountRow}>
+              <TextInput
+                value={amount}
+                onChangeText={handleAmountChange}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={theme.colors.textMuted}
+                style={styles.heroAmountInput}
+              />
+            </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Transaction type</Text>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Type & category</Text>
+              </View>
+              <Ionicons name="pricetag-outline" size={20} color={theme.colors.textMuted} />
+            </View>
+
             <View style={styles.typeRow}>
               {(["expense", "income", "transfer"] as TransactionType[]).map((typeOption) => {
                 const active = transactionType === typeOption;
@@ -548,43 +560,27 @@ export function TransactionForm({
                 );
               })}
             </View>
-          </View>
 
-          <AccountPicker
-            label="From account"
-            value={accountId}
-            onChange={setAccountId}
-            helperText="Money will move out of this account."
-            currency={currency}
-          />
-
-          {transactionType === "transfer" && (
-            <AccountPicker
-              label="To account"
-              value={toAccountId}
-              onChange={setToAccountId}
-              placeholder="Choose a destination account"
-              helperText="Money lands here."
-              currency={currency}
-              excludeAccountIds={accountId ? [accountId] : undefined}
-            />
-          )}
-
-          {transactionType !== "transfer" && (
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Category</Text>
+            {transactionType !== "transfer" && (
               <Pressable
-                style={[styles.input, styles.categoryButton]}
+                style={styles.selectionTile}
                 onPress={() => setCategoryModalVisible(true)}
+                accessibilityRole="button"
               >
-                <Text
-                  style={selectedCategory ? styles.categoryButtonText : styles.categoryButtonPlaceholder}
-                >
-                  {selectedCategory ? selectedCategory.name : "Choose a category"}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+                <View style={styles.selectionTileInfo}>
+                  <Text style={styles.selectionLabel}>Category</Text>
+                  <Text style={styles.selectionValue}>
+                    {selectedCategory ? selectedCategory.name : "Choose a category"}
+                  </Text>
+                </View>
+                <View style={styles.selectionIcon}>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
+                </View>
               </Pressable>
-              {selectedCategory ? (
+            )}
+
+            {transactionType !== "transfer" && selectedCategory && (
+              <View style={styles.selectionBadgeRow}>
                 <View style={styles.typeBadge(selectedCategory.type)}>
                   <Ionicons
                     name={selectedCategory.type === "income" ? "arrow-down-circle" : "arrow-up-circle"}
@@ -595,97 +591,129 @@ export function TransactionForm({
                     {selectedCategory.type === "expense" ? "Expense" : "Income"}
                   </Text>
                 </View>
-              ) : (
-                <Text style={styles.helperText}>Categories match the selected type.</Text>
-              )}
-            </View>
-          )}
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Note</Text>
-            <TextInput
-              value={note}
-              onChangeText={handleNoteChange}
-              placeholder="Add a short note"
-              placeholderTextColor={theme.colors.textMuted}
-              multiline
-              style={[styles.input, styles.noteInput]}
-            />
-            <View style={styles.helperRow}>
-              <Text style={styles.helperText}>Up to 100 words</Text>
-              <Text style={styles.helperText}>{noteWordCount}/100</Text>
-            </View>
+              </View>
+            )}
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Date</Text>
-            <Pressable
-              style={[styles.input, styles.dateButton]}
-              onPress={() => setShowDatePicker((prev) => (Platform.OS === "ios" ? prev : !prev))}
-            >
-              <Text style={styles.dateText}>{dayjs(date).format("MMM D, YYYY")}</Text>
-              <Ionicons name="calendar" size={20} color={theme.colors.textMuted} />
-            </Pressable>
-            {showDatePicker && (
-              <DateTimePicker
-                value={date}
-                mode="date"
-                display={Platform.OS === "ios" ? "inline" : "default"}
-                onChange={(_, selectedDate) => {
-                  if (selectedDate) {
-                    const next = new Date(selectedDate);
-                    next.setHours(0, 0, 0, 0);
-                    setDate(next);
-                  }
-                  if (Platform.OS !== "ios") {
-                    setShowDatePicker(false);
-                  }
-                }}
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Accounts</Text>
+              </View>
+              <Ionicons name="wallet-outline" size={20} color={theme.colors.textMuted} />
+            </View>
+
+            <AccountPicker
+              label="From account"
+              value={accountId}
+              onChange={setAccountId}
+              currency={currency}
+            />
+
+            {transactionType === "transfer" && (
+              <AccountPicker
+                label="To account"
+                value={toAccountId}
+                onChange={setToAccountId}
+                placeholder="Choose a destination account"
+                currency={currency}
+                excludeAccountIds={accountId ? [accountId] : undefined}
               />
             )}
           </View>
 
-          {enableRecurringOption && (
-            <View style={styles.recurringCard}>
-              <View style={styles.recurringHeader}>
-                <View style={styles.flex}>
-                  <Text style={styles.label}>Make recurring</Text>
-                  <Text style={styles.helperText}>
-                    Repeat this transaction automatically on a schedule.
-                  </Text>
-                </View>
-                <Switch
-                  value={isRecurring}
-                  onValueChange={setIsRecurring}
-                  thumbColor={isRecurring ? theme.colors.primary : theme.colors.surface}
-                  trackColor={{ true: `${theme.colors.primary}55`, false: theme.colors.border }}
-                />
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Notes & schedule</Text>
               </View>
+              <Ionicons name="calendar-outline" size={20} color={theme.colors.textMuted} />
+            </View>
 
-              {isRecurring && (
-                <View style={styles.recurringBody}>
-                  <Text style={styles.label}>Repeats</Text>
-                  <View style={styles.frequencyRow}>
-                    {recurringOptions.map((option) => {
-                      const active = recurringFrequency === option.value;
-                      return (
-                        <Pressable
-                          key={option.value}
-                          style={styles.frequencyPill(active)}
-                          onPress={() => setRecurringFrequency(option.value)}
-                        >
-                          <Text style={styles.frequencyPillText(active)}>{option.label}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <Text style={styles.helperText}>
-                    Next occurrence will be on {dayjs(date).format("MMM D, YYYY")}.
-                  </Text>
-                </View>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Note</Text>
+              <TextInput
+                value={note}
+                onChangeText={handleNoteChange}
+                placeholder="Add a short note"
+                placeholderTextColor={theme.colors.textMuted}
+                multiline
+                style={[styles.input, styles.noteInput]}
+              />
+            </View>
+
+            <View style={styles.sectionDivider} />
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Date</Text>
+              <Pressable
+                style={[styles.input, styles.dateButton]}
+                onPress={() => setShowDatePicker((prev) => (Platform.OS === "ios" ? prev : !prev))}
+              >
+                <Text style={styles.dateText}>{dayjs(date).format("MMM D, YYYY")}</Text>
+                <Ionicons name="calendar" size={20} color={theme.colors.textMuted} />
+              </Pressable>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "inline" : "default"}
+                  onChange={(_, selectedDate) => {
+                    if (selectedDate) {
+                      const next = new Date(selectedDate);
+                      next.setHours(0, 0, 0, 0);
+                      setDate(next);
+                    }
+                    if (Platform.OS !== "ios") {
+                      setShowDatePicker(false);
+                    }
+                  }}
+                />
               )}
             </View>
-          )}
+
+            {enableRecurringOption && (
+              <>
+                <View style={styles.sectionDivider} />
+                <View style={styles.recurringSection}>
+                  <View style={styles.recurringHeader}>
+                    <View style={styles.flex}>
+                      <Text style={styles.label}>Make recurring</Text>
+                      <Text style={styles.helperText}>
+                        Repeat this transaction automatically on a schedule.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={isRecurring}
+                      onValueChange={setIsRecurring}
+                      thumbColor={isRecurring ? theme.colors.primary : theme.colors.surface}
+                      trackColor={{ true: `${theme.colors.primary}55`, false: theme.colors.border }}
+                    />
+                  </View>
+
+                  {isRecurring && (
+                    <View style={styles.recurringBody}>
+                      <Text style={styles.label}>Repeats</Text>
+                      <View style={styles.frequencyRow}>
+                        {recurringOptions.map((option) => {
+                          const active = recurringFrequency === option.value;
+                          return (
+                            <Pressable
+                              key={option.value}
+                              style={styles.frequencyPill(active)}
+                              onPress={() => setRecurringFrequency(option.value)}
+                            >
+                              <Text style={styles.frequencyPillText(active)}>{option.label}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
 
           <Pressable
             style={styles.detailsToggle}
@@ -697,15 +725,17 @@ export function TransactionForm({
                 With, location, photos and reporting preferences
               </Text>
             </View>
-            <Ionicons
-              name={detailsExpanded ? "chevron-up" : "chevron-down"}
-              size={18}
-              color={theme.colors.text}
-            />
+            <View style={styles.detailsToggleIcon}>
+              <Ionicons
+                name={detailsExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+                color={theme.colors.primary}
+              />
+            </View>
           </Pressable>
 
           {detailsExpanded && (
-            <View style={styles.detailsCard}>
+            <View style={[styles.sectionCard, styles.detailsCard]}>
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>With (optional)</Text>
                 <View style={styles.participantRow}>
@@ -874,6 +904,34 @@ const createStyles = (
     safeArea: {
       flex: 1,
       backgroundColor: theme.colors.background,
+      position: "relative",
+    },
+    backgroundAccent: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 220,
+      overflow: "hidden",
+    },
+    accentBlobPrimary: {
+      position: "absolute",
+      top: -120,
+      right: -40,
+      width: 260,
+      height: 260,
+      borderRadius: 200,
+      backgroundColor: `${theme.colors.primary}25`,
+      transform: [{ rotate: "12deg" }],
+    },
+    accentBlobSecondary: {
+      position: "absolute",
+      top: -40,
+      left: -60,
+      width: 200,
+      height: 200,
+      borderRadius: 160,
+      backgroundColor: `${theme.colors.accent}18`,
     },
     flex: {
       flex: 1,
@@ -903,7 +961,79 @@ const createStyles = (
     content: {
       paddingHorizontal: theme.spacing.xl,
       paddingBottom: theme.spacing.xl + insets.bottom,
+      paddingTop: theme.spacing.lg,
       gap: theme.spacing.lg,
+    },
+    heroCard: {
+      ...theme.components.card,
+      padding: theme.spacing.xl,
+      borderRadius: theme.radii.lg,
+      gap: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}22`,
+      shadowColor: theme.colors.primary,
+      shadowOpacity: 0.1,
+      shadowRadius: 20,
+      elevation: 4,
+    },
+    heroHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    heroLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    currencyBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.xs,
+      backgroundColor: `${theme.colors.primary}15`,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.xs,
+      borderRadius: theme.radii.pill,
+    },
+    currencyBadgeText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    heroAmountRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: theme.radii.md,
+      backgroundColor: theme.colors.surfaceElevated,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}33`,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+    },
+    heroAmountInput: {
+      flex: 1,
+      fontSize: 36,
+      fontWeight: "700",
+      color: theme.colors.text,
+      textAlign: "center",
+      paddingVertical: theme.spacing.sm,
+    },
+    sectionCard: {
+      ...theme.components.card,
+      borderRadius: theme.radii.lg,
+      padding: theme.spacing.xl,
+      gap: theme.spacing.lg,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.md,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: theme.colors.text,
     },
     fieldGroup: {
       gap: theme.spacing.sm,
@@ -942,18 +1072,50 @@ const createStyles = (
       ...theme.components.input,
       fontSize: 16,
     },
-    categoryButton: {
+    selectionTile: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surfaceElevated,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.md,
     },
-    categoryButtonText: {
-      color: theme.colors.text,
-      fontWeight: "600",
+    selectionTileInfo: {
+      flex: 1,
+      gap: 4,
     },
-    categoryButtonPlaceholder: {
+    selectionLabel: {
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 1,
       color: theme.colors.textMuted,
-      fontWeight: "500",
+    },
+    selectionValue: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    selectionIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: theme.radii.md,
+      backgroundColor: theme.colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    selectionBadgeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+    },
+    sectionDivider: {
+      height: 1,
+      backgroundColor: theme.colors.border,
+      opacity: 0.5,
     },
     typeBadge: (type: TransactionType) => ({
       flexDirection: "row",
@@ -973,11 +1135,6 @@ const createStyles = (
       textTransform: "uppercase",
       letterSpacing: 1,
     },
-    helperRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
     helperText: {
       fontSize: 12,
       color: theme.colors.textMuted,
@@ -996,13 +1153,8 @@ const createStyles = (
       fontSize: 16,
       fontWeight: "600",
     },
-    recurringCard: {
+    recurringSection: {
       gap: theme.spacing.md,
-      padding: theme.spacing.lg,
-      borderRadius: theme.radii.lg,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
     },
     recurringHeader: {
       flexDirection: "row",
@@ -1038,6 +1190,9 @@ const createStyles = (
       padding: theme.spacing.lg,
       borderRadius: theme.radii.lg,
       backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}33`,
+      gap: theme.spacing.md,
     },
     detailsToggleTitle: {
       fontSize: 15,
@@ -1049,9 +1204,15 @@ const createStyles = (
       color: theme.colors.textMuted,
       marginTop: 2,
     },
+    detailsToggleIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: theme.radii.md,
+      backgroundColor: `${theme.colors.primary}12`,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     detailsCard: {
-      ...theme.components.surface,
-      padding: theme.spacing.lg,
       gap: theme.spacing.lg,
     },
     participantRow: {
