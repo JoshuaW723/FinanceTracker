@@ -438,41 +438,6 @@ export default function HomeScreen() {
           <Text style={styles.subtitle}>Here’s a tidy look at your money this month.</Text>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.accountChipRow}
-        >
-            <Pressable
-              onPress={() => setSelectedAccountId(null)}
-              style={[styles.accountChip, !selectedAccountId && styles.accountChipActive]}
-            >
-              <Text style={styles.accountChipTitle}>All accounts</Text>
-              <Text style={styles.accountChipBalance}>
-                {formatCurrency(allAccountsBalance, baseCurrency)}
-              </Text>
-            </Pressable>
-            {accounts.map((account) => {
-              const active = selectedAccountId === account.id;
-              return (
-                <Pressable
-                key={account.id}
-                onPress={() => setSelectedAccountId(account.id)}
-                style={[
-                  styles.accountChip,
-                  active && styles.accountChipActive,
-                  account.isArchived && styles.accountChipArchived,
-                ]}
-                  >
-                    <Text style={styles.accountChipTitle}>{account.name}</Text>
-                    <Text style={styles.accountChipBalance}>
-                      {formatCurrency(account.balance, account.currency || baseCurrency)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-        </ScrollView>
-
         <View style={[theme.components.card, styles.balanceCard]}>
           <View style={styles.balanceHeader}>
             <Text style={styles.balanceLabel}>Total balance</Text>
@@ -520,6 +485,41 @@ export default function HomeScreen() {
             <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
           </Pressable>
         </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.accountChipRow}
+        >
+          <Pressable
+            onPress={() => setSelectedAccountId(null)}
+            style={[styles.accountChip, !selectedAccountId && styles.accountChipActive]}
+          >
+            <Text style={styles.accountChipTitle}>All accounts</Text>
+            <Text style={styles.accountChipBalance}>
+              {formatCurrency(allAccountsBalance, baseCurrency)}
+            </Text>
+          </Pressable>
+          {accounts.map((account) => {
+            const active = selectedAccountId === account.id;
+            return (
+              <Pressable
+                key={account.id}
+                onPress={() => setSelectedAccountId(account.id)}
+                style={[
+                  styles.accountChip,
+                  active && styles.accountChipActive,
+                  account.isArchived && styles.accountChipArchived,
+                ]}
+              >
+                <Text style={styles.accountChipTitle}>{account.name}</Text>
+                <Text style={styles.accountChipBalance}>
+                  {formatCurrency(account.balance, account.currency || baseCurrency)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
 
         <View style={[theme.components.surface, styles.monthlyReport]}>
           <View style={styles.monthlyHeader}>
@@ -917,7 +917,7 @@ const createStyles = (
     accountChip: {
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.sm,
-      borderRadius: theme.radii.lg,
+      borderRadius: theme.radii.md,
       backgroundColor: theme.colors.surface,
       borderWidth: 1,
       borderColor: theme.colors.border,
