@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import {
   Modal,
   Platform,
@@ -18,6 +18,12 @@ import dayjs, { type Dayjs } from "dayjs";
 
 import { useAppTheme } from "../../theme";
 import { Transaction, useFinanceStore } from "../../lib/store";
+import {
+  filterTransactionsByAccount,
+  getTransactionDelta,
+  getTransactionVisualState,
+  type TransactionVisualVariant,
+} from "../../lib/transactions";
 import { truncateWords } from "../../lib/text";
 
 const formatCurrency = (
@@ -122,11 +128,29 @@ export default function TransactionsScreen() {
   const categories = useFinanceStore((state) => state.preferences.categories);
   const recurringTransactions = useFinanceStore((state) => state.recurringTransactions);
   const logRecurringTransaction = useFinanceStore((state) => state.logRecurringTransaction);
+  const accounts = useFinanceStore((state) => state.accounts);
   const router = useRouter();
   const { category: categoryParam } = useLocalSearchParams<{ category?: string | string[] }>();
 
+  const baseCurrency = currency || "USD";
+
   const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  const visibleAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (account) => !account.excludeFromTotal && (account.currency || baseCurrency) === baseCurrency,
+      ),
+    [accounts, baseCurrency],
+  );
+
+  const visibleAccountIds = useMemo(() => visibleAccounts.map((account) => account.id), [visibleAccounts]);
+
+  const allAccountsBalance = useMemo(
+    () => visibleAccounts.reduce((acc, account) => acc + account.balance, 0),
+    [visibleAccounts],
+  );
   
   // Default to current month (last item in array)
   const [selectedPeriod, setSelectedPeriod] = useState(() => {
@@ -155,6 +179,7 @@ export default function TransactionsScreen() {
   const [endDate, setEndDate] = useState<Dayjs | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!categoryParam) {
@@ -182,6 +207,24 @@ export default function TransactionsScreen() {
 
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
+
+  const accountLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((account) => {
+      map.set(account.id, account.name);
+    });
+    return map;
+  }, [accounts]);
+
+  const resolveAccountName = useCallback(
+    (accountId?: string | null) => {
+      if (!accountId) {
+        return "Unassigned account";
+      }
+      return accountLookup.get(accountId) ?? "Unknown account";
+    },
+    [accountLookup],
+  );
 
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
@@ -253,7 +296,7 @@ export default function TransactionsScreen() {
       filters.push({ key: `cat-${category}`, label: category, type: "category", value: category });
     });
     return filters;
-  }, [endDate, maxAmount, minAmount, searchTerm, selectedCategories, startDate, currency]);
+  }, [currency, endDate, maxAmount, minAmount, searchTerm, selectedCategories, startDate]);
 
   const hasActiveFilters = activeFilters.length > 0;
 
@@ -261,7 +304,25 @@ export default function TransactionsScreen() {
     const period = periodOptions.find((option) => option.key === selectedPeriod) ?? periodOptions[periodOptions.length - 1];
     const { start, end } = period.range();
 
-    const periodTransactions = transactions.filter((transaction) => {
+    const allowedAccountIds = selectedAccountId ? null : new Set(visibleAccountIds);
+    const scopedTransactions = filterTransactionsByAccount(transactions, selectedAccountId).filter(
+      (transaction) => {
+        if (!allowedAccountIds || allowedAccountIds.size === 0) {
+          return true;
+        }
+
+        const fromAllowed = transaction.accountId
+          ? allowedAccountIds.has(transaction.accountId)
+          : false;
+        const toAllowed = transaction.toAccountId
+          ? allowedAccountIds.has(transaction.toAccountId)
+          : false;
+
+        return fromAllowed || toAllowed;
+      },
+    );
+
+    const periodTransactions = scopedTransactions.filter((transaction) => {
       const date = dayjs(transaction.date);
       return !date.isBefore(start) && !date.isAfter(end);
     });
@@ -362,9 +423,11 @@ export default function TransactionsScreen() {
         if (transaction.type === "income") {
           existing.dailyIncome += transaction.amount;
           existing.dailyNet += transaction.amount;
-        } else {
+        } else if (transaction.type === "expense") {
           existing.dailyExpense += transaction.amount;
           existing.dailyNet -= transaction.amount;
+        } else {
+          existing.dailyNet += getTransactionDelta(transaction, selectedAccountId);
         }
         grouped.set(key, existing);
       });
@@ -382,7 +445,7 @@ export default function TransactionsScreen() {
       (acc, transaction) => {
         if (transaction.type === "income") {
           acc.income += transaction.amount;
-        } else {
+        } else if (transaction.type === "expense") {
           acc.expense += transaction.amount;
         }
         return acc;
@@ -390,21 +453,25 @@ export default function TransactionsScreen() {
       { income: 0, expense: 0 },
     );
 
+    const netChange = reportable.reduce(
+      (acc, transaction) => acc + getTransactionDelta(transaction, selectedAccountId),
+      0,
+    );
+
     // Calculate balances
     let openingBalance = 0;
 
-    [...transactions.filter((transaction) => !transaction.excludeFromReports)]
+    scopedTransactions
+      .filter((transaction) => !transaction.excludeFromReports)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .forEach((transaction) => {
-        const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
+        const value = getTransactionDelta(transaction, selectedAccountId);
         const date = dayjs(transaction.date);
 
         if (date.isBefore(start)) {
           openingBalance += value;
         }
       });
-
-    const netChange = totals.income - totals.expense;
     const closingBalance = openingBalance + netChange;
 
     // Expense breakdown
@@ -427,7 +494,9 @@ export default function TransactionsScreen() {
     // Recurring transactions
     const recurring = recurringTransactions.filter((item) => {
       const occurrence = dayjs(item.nextOccurrence);
-      return !occurrence.isBefore(start) && !occurrence.isAfter(end);
+      const matchesAccount =
+        !selectedAccountId || item.accountId === selectedAccountId || item.toAccountId === selectedAccountId;
+      return matchesAccount && !occurrence.isBefore(start) && !occurrence.isAfter(end);
     });
 
     return {
@@ -452,8 +521,10 @@ export default function TransactionsScreen() {
     searchTerm,
     selectedPeriod,
     selectedCategories,
+    selectedAccountId,
     startDate,
     transactions,
+    visibleAccountIds,
   ]);
 
   const closingBalanceDisplay = useMemo(() => {
@@ -609,7 +680,7 @@ export default function TransactionsScreen() {
                       }}
                       style={styles.filterChipClose}
                     >
-                      <Ionicons name="close" size={12} color={theme.colors.text} />
+                      <Ionicons name="close" size={12} color={theme.colors.background} />
                     </Pressable>
                   </View>
                 ))}
@@ -619,9 +690,62 @@ export default function TransactionsScreen() {
               </ScrollView>
             )}
 
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.accountChipRow}
+            >
+            <Pressable
+              onPress={() => setSelectedAccountId(null)}
+              style={[styles.accountChip, !selectedAccountId && styles.accountChipActive]}
+            >
+              <Text
+                style={[
+                  styles.accountChipTitle,
+                  !selectedAccountId && styles.accountChipTitleActive,
+                ]}
+              >
+                All accounts
+              </Text>
+              <Text
+                style={[
+                  styles.accountChipBalance,
+                  !selectedAccountId && styles.accountChipBalanceActive,
+                ]}
+              >
+                {formatCurrency(allAccountsBalance, baseCurrency)}
+              </Text>
+            </Pressable>
+            {accounts.map((account) => {
+              const active = selectedAccountId === account.id;
+              return (
+                <Pressable
+                    key={account.id}
+                    onPress={() => setSelectedAccountId(account.id)}
+                    style={[
+                      styles.accountChip,
+                      active && styles.accountChipActive,
+                      account.isArchived && styles.accountChipArchived,
+                    ]}
+                  >
+                    <Text
+                      style={[styles.accountChipTitle, active && styles.accountChipTitleActive]}
+                    >
+                      {account.name}
+                    </Text>
+                    <Text
+                      style={[styles.accountChipBalance, active && styles.accountChipBalanceActive]}
+                    >
+                      {formatCurrency(account.balance, account.currency || baseCurrency)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
             {/* Expense Breakdown */}
             {expenseBreakdown.length > 0 && (
-              <Pressable 
+              <Pressable
                 style={styles.breakdownCard}
                 onPress={() => setCategoriesExpanded(!categoriesExpanded)}
               >
@@ -722,6 +846,11 @@ export default function TransactionsScreen() {
               const notePreview = transaction.note.trim().length
                 ? truncateWords(transaction.note, 10)
                 : "No notes";
+              const visual = getTransactionVisualState(transaction, selectedAccountId);
+              const isTransfer = transaction.type === "transfer";
+              const transferLabel = isTransfer
+                ? `${resolveAccountName(transaction.accountId)} → ${resolveAccountName(transaction.toAccountId)}`
+                : null;
 
               return (
                 <View key={transaction.id}>
@@ -732,7 +861,7 @@ export default function TransactionsScreen() {
                     accessibilityRole="button"
                   >
                     <View style={styles.transactionLeft}>
-                      <View style={styles.categoryIcon(transaction.type)}>
+                      <View style={styles.categoryIcon(visual.variant)}>
                         <Text style={styles.categoryInitial}>
                           {transaction.category.charAt(0).toUpperCase()}
                         </Text>
@@ -744,11 +873,16 @@ export default function TransactionsScreen() {
                         <Text style={styles.transactionNote} numberOfLines={2}>
                           {notePreview}
                         </Text>
+                        {isTransfer && transferLabel ? (
+                          <Text style={styles.transferMeta} numberOfLines={1}>
+                            {transferLabel}
+                          </Text>
+                        ) : null}
                       </View>
                     </View>
                     <View style={styles.transactionRight}>
-                      <Text style={styles.transactionAmount(transaction.type)}>
-                        {transaction.type === "income" ? "+" : "−"}
+                      <Text style={styles.transactionAmount(visual.variant)}>
+                        {visual.prefix}
                         {formatCurrency(transaction.amount, currency || "USD")}
                       </Text>
                       {transaction.excludeFromReports && (
@@ -1091,14 +1225,13 @@ const createStyles = (theme: any, insets: any) =>
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: 16,
-      backgroundColor: theme.colors.primaryMuted,
-      borderWidth: 1,
-      borderColor: theme.colors.primary,
+      backgroundColor: theme.colors.primary,
+      borderWidth: 0,
     },
     filterChipText: {
       fontSize: 12,
       fontWeight: "600",
-      color: theme.colors.primary,
+      color: theme.colors.background,
     },
     filterChipClose: {
       padding: 2,
@@ -1113,6 +1246,45 @@ const createStyles = (theme: any, insets: any) =>
       fontSize: 12,
       fontWeight: "600",
       color: theme.colors.text,
+    },
+    accountChipRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      paddingVertical: 8,
+      marginBottom: 16,
+    },
+    accountChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surface,
+      minWidth: 140,
+      flexShrink: 1,
+    },
+    accountChipActive: {
+      borderColor: theme.colors.primary,
+      backgroundColor: theme.colors.primary,
+    },
+    accountChipArchived: {
+      opacity: 0.6,
+    },
+    accountChipTitle: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    accountChipTitleActive: {
+      color: theme.colors.background,
+    },
+    accountChipBalance: {
+      fontSize: 12,
+      color: theme.colors.textMuted,
+    },
+    accountChipBalanceActive: {
+      color: `${theme.colors.background}CC`,
     },
     
     // Breakdown Card
@@ -1294,13 +1466,16 @@ const createStyles = (theme: any, insets: any) =>
       gap: 12,
       flex: 1,
     },
-    categoryIcon: (type: string) => ({
+    categoryIcon: (variant: TransactionVisualVariant) => ({
       width: 36,
       height: 36,
       borderRadius: 10,
-      backgroundColor: type === "income" 
-        ? `${theme.colors.success}20` 
-        : `${theme.colors.danger}20`,
+      backgroundColor:
+        variant === "income"
+          ? `${theme.colors.success}20`
+          : variant === "expense"
+            ? `${theme.colors.danger}20`
+            : `${theme.colors.border}55`,
       alignItems: "center",
       justifyContent: "center",
     }),
@@ -1322,10 +1497,19 @@ const createStyles = (theme: any, insets: any) =>
       fontSize: 12,
       color: theme.colors.textMuted,
     },
-    transactionAmount: (type: string) => ({
+    transferMeta: {
+      fontSize: 11,
+      color: theme.colors.textMuted,
+    },
+    transactionAmount: (variant: TransactionVisualVariant) => ({
       fontSize: 15,
       fontWeight: "700",
-      color: type === "income" ? theme.colors.success : theme.colors.danger,
+      color:
+        variant === "income"
+          ? theme.colors.success
+          : variant === "expense"
+            ? theme.colors.danger
+            : theme.colors.text,
     }),
     transactionRight: {
       alignItems: "flex-end",

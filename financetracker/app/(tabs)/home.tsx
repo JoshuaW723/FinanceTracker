@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,6 +9,7 @@ import { DonutChart } from "../../components/DonutChart";
 import { SpendingBarChart, SpendingLineChart } from "../../components/SpendingCharts";
 import { useAppTheme } from "../../theme";
 import { BudgetGoal, useFinanceStore } from "../../lib/store";
+import { filterTransactionsByAccount, getTransactionDelta, getTransactionVisualState } from "../../lib/transactions";
 import { truncateWords } from "../../lib/text";
 
 const formatCurrency = (
@@ -27,6 +28,7 @@ const summarizeGoalProgress = (
   goal: BudgetGoal,
   currency: string,
   transactions: ReturnType<typeof useFinanceStore.getState>["transactions"],
+  accountId: string | null,
 ) => {
   const now = dayjs();
   const start = goal.period === "week" ? now.startOf("week") : now.startOf("month");
@@ -52,7 +54,7 @@ const summarizeGoalProgress = (
   }
 
   const netSavings = withinPeriod.reduce((acc, transaction) => {
-    const delta = transaction.type === "income" ? transaction.amount : -transaction.amount;
+    const delta = getTransactionDelta(transaction, accountId);
     return acc + delta;
   }, 0);
 
@@ -75,11 +77,66 @@ export default function HomeScreen() {
   const budgetGoals = useFinanceStore((state) => state.budgetGoals);
   const recurringTransactions = useFinanceStore((state) => state.recurringTransactions);
   const logRecurringTransaction = useFinanceStore((state) => state.logRecurringTransaction);
+  const accounts = useFinanceStore((state) => state.accounts);
 
   const reportableTransactions = useMemo(
     () => transactions.filter((transaction) => !transaction.excludeFromReports),
     [transactions],
   );
+
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+  const accountLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((account) => map.set(account.id, account.name));
+    return map;
+  }, [accounts]);
+
+  const resolveAccountName = useCallback(
+    (accountId?: string | null) => {
+      if (!accountId) {
+        return "Unassigned account";
+      }
+      return accountLookup.get(accountId) ?? "Unknown account";
+    },
+    [accountLookup],
+  );
+
+  const baseCurrency = profile.currency || "USD";
+  const visibleAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (account) => !account.excludeFromTotal && (account.currency || baseCurrency) === baseCurrency,
+      ),
+    [accounts, baseCurrency],
+  );
+
+  const visibleAccountIds = useMemo(() => visibleAccounts.map((account) => account.id), [visibleAccounts]);
+
+  const scopedTransactions = useMemo(() => {
+    const allowedAccountIds = selectedAccountId ? null : new Set(visibleAccountIds);
+    return filterTransactionsByAccount(reportableTransactions, selectedAccountId).filter((transaction) => {
+      if (!allowedAccountIds || allowedAccountIds.size === 0) {
+        return true;
+      }
+
+      const fromAllowed = transaction.accountId ? allowedAccountIds.has(transaction.accountId) : false;
+      const toAllowed = transaction.toAccountId ? allowedAccountIds.has(transaction.toAccountId) : false;
+      return fromAllowed || toAllowed;
+    });
+  }, [reportableTransactions, selectedAccountId, visibleAccountIds]);
+
+  const allAccountsBalance = useMemo(
+    () => visibleAccounts.reduce((acc, account) => acc + account.balance, 0),
+    [visibleAccounts],
+  );
+
+  const selectedAccount = useMemo(
+    () => accounts.find((account) => account.id === selectedAccountId) ?? null,
+    [accounts, selectedAccountId],
+  );
+
+  const balance = selectedAccount ? selectedAccount.balance : allAccountsBalance;
 
   const [overviewPeriod, setOverviewPeriod] = useState<"week" | "month">("month");
   const [overviewChart, setOverviewChart] = useState<"bar" | "line">("bar");
@@ -95,43 +152,34 @@ export default function HomeScreen() {
     }
   }, [overviewChart, overviewPeriod]);
 
-  const balance = useMemo(
-    () =>
-      reportableTransactions.reduce((acc, transaction) => {
-        const multiplier = transaction.type === "income" ? 1 : -1;
-        return acc + transaction.amount * multiplier;
-      }, 0),
-    [reportableTransactions],
-  );
-
   const startOfMonth = useMemo(() => dayjs().startOf("month"), []);
   const endOfMonth = useMemo(() => dayjs().endOf("month"), []);
 
   const summary = useMemo(
     () =>
-      reportableTransactions.reduce(
+      scopedTransactions.reduce(
         (acc, transaction) => {
-          const value = transaction.type === "income" ? transaction.amount : -transaction.amount;
           const date = dayjs(transaction.date);
+          const delta = getTransactionDelta(transaction, selectedAccountId);
 
           if (date.isBefore(startOfMonth)) {
-            acc.openingBalance += value;
+            acc.openingBalance += delta;
           }
 
           if (!date.isBefore(startOfMonth) && !date.isAfter(endOfMonth)) {
             if (transaction.type === "income") {
               acc.income += transaction.amount;
-            } else {
+            } else if (transaction.type === "expense") {
               acc.expense += transaction.amount;
             }
-            acc.monthNet += value;
+            acc.monthNet += delta;
           }
 
           return acc;
         },
         { income: 0, expense: 0, openingBalance: 0, monthNet: 0 },
       ),
-    [endOfMonth, reportableTransactions, startOfMonth],
+    [endOfMonth, scopedTransactions, selectedAccountId, startOfMonth],
   );
 
   const {
@@ -145,7 +193,7 @@ export default function HomeScreen() {
     const periodStart = overviewPeriod === "week" ? today.startOf("week") : today.startOf("month");
     const periodEnd = overviewPeriod === "week" ? today.endOf("week") : today.endOf("month");
 
-    const filtered = reportableTransactions.filter((transaction) => {
+    const filtered = scopedTransactions.filter((transaction) => {
       const date = dayjs(transaction.date);
       return !date.isBefore(periodStart) && !date.isAfter(periodEnd);
     });
@@ -154,7 +202,7 @@ export default function HomeScreen() {
       (acc, transaction) => {
         if (transaction.type === "income") {
           acc.income += transaction.amount;
-        } else {
+        } else if (transaction.type === "expense") {
           acc.expense += transaction.amount;
         }
         return acc;
@@ -190,7 +238,7 @@ export default function HomeScreen() {
     const previousPeriodEnd =
       overviewPeriod === "week" ? previousPeriodStart.endOf("week") : previousPeriodStart.endOf("month");
 
-    const previousExpense = reportableTransactions.reduce((acc, transaction) => {
+    const previousExpense = scopedTransactions.reduce((acc, transaction) => {
       if (transaction.type !== "expense") {
         return acc;
       }
@@ -208,7 +256,7 @@ export default function HomeScreen() {
             const target = today.subtract(offset, "month");
             const start = target.startOf("month");
             const end = target.endOf("month");
-            const spent = reportableTransactions.reduce((acc, transaction) => {
+            const spent = scopedTransactions.reduce((acc, transaction) => {
               if (transaction.type !== "expense") {
                 return acc;
               }
@@ -242,7 +290,7 @@ export default function HomeScreen() {
 
     const currentMonthDaily = Array.from({ length: daysInMonth }).map((_, index) => {
       const day = monthStart.add(index, "day");
-      const spent = reportableTransactions
+      const spent = scopedTransactions
         .filter((transaction) => transaction.type === "expense" && dayjs(transaction.date).isSame(day, "day"))
         .reduce((acc, transaction) => acc + transaction.amount, 0);
 
@@ -251,7 +299,7 @@ export default function HomeScreen() {
 
     const previousMonthValues = Array.from({ length: previousMonthDayCount }).map((_, index) => {
       const day = previousMonthStart.add(index, "day");
-      return reportableTransactions
+      return scopedTransactions
         .filter((transaction) => transaction.type === "expense" && dayjs(transaction.date).isSame(day, "day"))
         .reduce((acc, transaction) => acc + transaction.amount, 0);
     });
@@ -275,14 +323,14 @@ export default function HomeScreen() {
         previous: previousMonthDaily,
       },
     };
-  }, [overviewPeriod, reportableTransactions]);
+  }, [overviewPeriod, scopedTransactions]);
 
   const topSpending = useMemo(() => {
     const today = dayjs();
     const periodStart = topSpendingPeriod === "week" ? today.startOf("week") : today.startOf("month");
     const periodEnd = topSpendingPeriod === "week" ? today.endOf("week") : today.endOf("month");
 
-    const filtered = reportableTransactions.filter((transaction) => {
+    const filtered = scopedTransactions.filter((transaction) => {
       if (transaction.type !== "expense") {
         return false;
       }
@@ -320,7 +368,7 @@ export default function HomeScreen() {
     }
 
     return { entries, totalSpent };
-  }, [reportableTransactions, topSpendingPeriod]);
+  }, [scopedTransactions, topSpendingPeriod]);
 
   const donutColors = useMemo(
     () => [
@@ -342,7 +390,7 @@ export default function HomeScreen() {
     [donutColors, topSpending.entries],
   );
 
-  const currency = profile.currency || "USD";
+  const currency = selectedAccount?.currency || baseCurrency;
   const formattedBalance = formatCurrency(balance, currency);
   const formattedPeriodExpenses = formatCurrency(periodExpense, currency);
 
@@ -353,12 +401,17 @@ export default function HomeScreen() {
   const netIcon = netIsPositive ? "trending-up" : "trending-down";
   const netLabel = `${formatCurrency(netChangeThisMonth, currency, { signDisplay: "always" })} this month`;
 
+  const recentSourceTransactions = useMemo(
+    () => filterTransactionsByAccount(transactions, selectedAccountId),
+    [selectedAccountId, transactions],
+  );
+
   const recentTransactions = useMemo(
     () =>
-      [...transactions]
+      [...recentSourceTransactions]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 5),
-    [transactions],
+    [recentSourceTransactions],
   );
 
   const trendDelta = previousExpense - periodExpense;
@@ -384,6 +437,41 @@ export default function HomeScreen() {
           <Text style={styles.hello}>Welcome back, {profile.name.split(" ")[0]}</Text>
           <Text style={styles.subtitle}>Here’s a tidy look at your money this month.</Text>
         </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.accountChipRow}
+        >
+            <Pressable
+              onPress={() => setSelectedAccountId(null)}
+              style={[styles.accountChip, !selectedAccountId && styles.accountChipActive]}
+            >
+              <Text style={styles.accountChipTitle}>All accounts</Text>
+              <Text style={styles.accountChipBalance}>
+                {formatCurrency(allAccountsBalance, baseCurrency)}
+              </Text>
+            </Pressable>
+            {accounts.map((account) => {
+              const active = selectedAccountId === account.id;
+              return (
+                <Pressable
+                key={account.id}
+                onPress={() => setSelectedAccountId(account.id)}
+                style={[
+                  styles.accountChip,
+                  active && styles.accountChipActive,
+                  account.isArchived && styles.accountChipArchived,
+                ]}
+                  >
+                    <Text style={styles.accountChipTitle}>{account.name}</Text>
+                    <Text style={styles.accountChipBalance}>
+                      {formatCurrency(account.balance, account.currency || baseCurrency)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+        </ScrollView>
 
         <View style={[theme.components.card, styles.balanceCard]}>
           <View style={styles.balanceHeader}>
@@ -675,7 +763,12 @@ export default function HomeScreen() {
             </View>
             <View style={styles.goalList}>
               {budgetGoals.map((goal) => {
-                const progress = summarizeGoalProgress(goal, currency, reportableTransactions);
+                const progress = summarizeGoalProgress(
+                  goal,
+                  currency,
+                  scopedTransactions,
+                  selectedAccountId,
+                );
                 const progressPercent = Math.round(progress.percentage * 100);
                 const goalComplete = progressPercent >= 100;
 
@@ -723,40 +816,60 @@ export default function HomeScreen() {
           </View>
           {recentTransactions.length ? (
             <View style={styles.recentList}>
-              {recentTransactions.map((transaction) => (
-                <Pressable
-                  key={transaction.id}
-                  style={({ pressed }) => [styles.recentRow, pressed && styles.recentRowPressed]}
-                  onPress={() => router.push(`/transactions/${transaction.id}`)}
-                  accessibilityRole="button"
-                >
-                  <View
-                    style={[
-                      styles.recentAvatar,
-                      transaction.type === "income" ? styles.avatarIncome : styles.avatarExpense,
-                    ]}
+              {recentTransactions.map((transaction) => {
+                const visual = getTransactionVisualState(transaction, selectedAccountId);
+                const isTransfer = transaction.type === "transfer";
+                const transferLabel = isTransfer
+                  ? `${resolveAccountName(transaction.accountId)} → ${resolveAccountName(transaction.toAccountId)}`
+                  : transaction.category;
+                const amountColor =
+                  visual.variant === "income"
+                    ? styles.reportValuePositive
+                    : visual.variant === "expense"
+                      ? styles.reportValueNegative
+                      : styles.reportValueNeutral;
+                const avatarVariant =
+                  visual.variant === "income"
+                    ? styles.avatarIncome
+                    : visual.variant === "expense"
+                      ? styles.avatarExpense
+                      : styles.avatarNeutral;
+
+                return (
+                  <Pressable
+                    key={transaction.id}
+                    style={({ pressed }) => [styles.recentRow, pressed && styles.recentRowPressed]}
+                    onPress={() => router.push(`/transactions/${transaction.id}`)}
+                    accessibilityRole="button"
                   >
-                    <Text style={styles.avatarText}>{transaction.category.charAt(0)}</Text>
-                  </View>
-                  <View style={styles.recentCopy}>
-                    <Text style={styles.recentNote}>{transaction.note}</Text>
-                    <Text style={styles.recentMeta}>
-                      {dayjs(transaction.date).format("ddd, D MMM")} • {transaction.category}
+                    <View
+                      style={[
+                        styles.recentAvatar,
+                        avatarVariant,
+                      ]}
+                    >
+                      <Text style={styles.avatarText}>{transaction.category.charAt(0)}</Text>
+                    </View>
+                    <View style={styles.recentCopy}>
+                      <Text style={styles.recentNote}>{transaction.note}</Text>
+                      <Text style={styles.recentMeta}>
+                        {dayjs(transaction.date).format("ddd, D MMM")} •
+                        {" "}
+                        {isTransfer ? `Transfer · ${transferLabel}` : transaction.category}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.recentAmount,
+                        amountColor,
+                      ]}
+                    >
+                      {visual.prefix}
+                      {formatCurrency(transaction.amount, currency)}
                     </Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.recentAmount,
-                      transaction.type === "income"
-                        ? styles.reportValuePositive
-                        : styles.reportValueNegative,
-                    ]}
-                  >
-                    {transaction.type === "income" ? "+" : "-"}
-                    {formatCurrency(transaction.amount, currency)}
-                  </Text>
-                </Pressable>
-              ))}
+                  </Pressable>
+                );
+              })}
             </View>
           ) : (
             <View style={styles.emptyState}>
@@ -795,6 +908,35 @@ const createStyles = (
     subtitle: {
       ...theme.typography.subtitle,
       fontSize: 14,
+    },
+    accountChipRow: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.sm,
+    },
+    accountChip: {
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radii.lg,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    accountChipActive: {
+      borderColor: theme.colors.primary,
+      backgroundColor: `${theme.colors.primary}22`,
+    },
+    accountChipArchived: {
+      opacity: 0.6,
+    },
+    accountChipTitle: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    accountChipBalance: {
+      fontSize: 12,
+      color: theme.colors.textMuted,
     },
     balanceCard: {
       gap: theme.spacing.lg,
@@ -933,6 +1075,9 @@ const createStyles = (
     },
     reportValuePositive: {
       color: theme.colors.success,
+    },
+    reportValueNeutral: {
+      color: theme.colors.textMuted,
     },
     trendRow: {
       flexDirection: "row",
@@ -1154,6 +1299,9 @@ const createStyles = (
     },
     avatarExpense: {
       backgroundColor: `${theme.colors.danger}33`,
+    },
+    avatarNeutral: {
+      backgroundColor: `${theme.colors.border}66`,
     },
     avatarText: {
       fontSize: 16,

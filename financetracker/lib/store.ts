@@ -1,6 +1,20 @@
 import { create } from "zustand";
 
-export type TransactionType = "income" | "expense";
+export type TransactionType = "income" | "expense" | "transfer";
+
+export type AccountType = "cash" | "bank" | "card" | "investment";
+
+export interface Account {
+  id: string;
+  name: string;
+  type: AccountType;
+  balance: number;
+  initialBalance: number;
+  currency: string;
+  excludeFromTotal?: boolean;
+  isArchived?: boolean;
+  createdAt: string;
+}
 
 export interface Transaction {
   id: string;
@@ -9,6 +23,8 @@ export interface Transaction {
   type: TransactionType;
   category: string;
   date: string; // ISO string (date only in practice)
+  accountId: string;
+  toAccountId?: string | null;
   participants?: string[];
   location?: string;
   photos?: string[];
@@ -61,6 +77,8 @@ export interface RecurringTransaction {
   note: string;
   type: TransactionType;
   category: string;
+  accountId: string;
+  toAccountId?: string | null;
   frequency: "weekly" | "biweekly" | "monthly";
   nextOccurrence: string;
   isActive: boolean;
@@ -84,9 +102,10 @@ interface Preferences {
   categories: Category[];
 }
 
-interface FinanceState {
+export interface FinanceState {
   profile: Profile;
   preferences: Preferences;
+  accounts: Account[];
   transactions: Transaction[];
   recurringTransactions: RecurringTransaction[];
   budgetGoals: BudgetGoal[];
@@ -110,9 +129,43 @@ interface FinanceState {
   updateProfile: (payload: Partial<Profile>) => void;
   setThemeMode: (mode: ThemeMode) => void;
   addCategory: (category: Omit<Category, "id">) => void;
+  addAccount: (
+    account: {
+      name: string;
+      type: AccountType;
+      currency?: string;
+      initialBalance?: number;
+      excludeFromTotal?: boolean;
+    },
+  ) => void;
+  updateAccount: (
+    id: string,
+    updates: Partial<
+      Pick<Account, "name" | "type" | "isArchived" | "currency" | "initialBalance" | "excludeFromTotal">
+    >,
+  ) => void;
+  archiveAccount: (id: string, archived?: boolean) => void;
 }
 
+const applyAccountBalanceUpdate = (state: FinanceState, transactions: Transaction[]) => ({
+  transactions,
+  accounts: recalculateAccountBalances(state.accounts, transactions, state.profile.currency),
+});
+
 const now = new Date();
+export const DEFAULT_ACCOUNT_ID = "account-main";
+
+const createDefaultAccount = (currency: string): Account => ({
+  id: DEFAULT_ACCOUNT_ID,
+  name: "Everyday account",
+  type: "bank",
+  balance: 0,
+  initialBalance: 0,
+  currency,
+  excludeFromTotal: false,
+  isArchived: false,
+  createdAt: now.toISOString(),
+});
 
 const daysAgo = (amount: number) => {
   const date = new Date(now);
@@ -120,7 +173,80 @@ const daysAgo = (amount: number) => {
   return date.toISOString();
 };
 
-const seedTransactions: Transaction[] = [
+const ensureAccountAssignments = <T extends { accountId?: string | null }>(
+  records: T[],
+  fallbackAccountId: string,
+) =>
+  records.map((record) => ({
+    ...record,
+    accountId: record.accountId ?? fallbackAccountId,
+  }));
+
+const recalculateAccountBalances = (
+  accounts: Account[],
+  transactions: Transaction[],
+  fallbackCurrency: string,
+): Account[] => {
+  const base = accounts.map((account) => ({
+    ...account,
+    initialBalance: Number.isFinite(account.initialBalance) ? account.initialBalance : 0,
+    currency: account.currency || fallbackCurrency,
+    excludeFromTotal: account.excludeFromTotal ?? false,
+    balance: Number.isFinite(account.initialBalance) ? account.initialBalance : 0,
+  }));
+  const extras: Account[] = [];
+
+  const ensureAccount = (accountId?: string | null) => {
+    if (!accountId) {
+      return undefined;
+    }
+
+    let account = base.find((item) => item.id === accountId);
+    if (!account) {
+      account = extras.find((item) => item.id === accountId);
+    }
+
+    if (!account) {
+      account = {
+        id: accountId,
+        name: "Legacy account",
+        type: "cash",
+        balance: 0,
+        initialBalance: 0,
+        currency: fallbackCurrency,
+        excludeFromTotal: true,
+        isArchived: true,
+        createdAt: new Date().toISOString(),
+      };
+      extras.push(account);
+    }
+
+    return account;
+  };
+
+  transactions.forEach((transaction) => {
+    const primary = ensureAccount(transaction.accountId);
+    if (!primary) {
+      return;
+    }
+
+    if (transaction.type === "income") {
+      primary.balance += transaction.amount;
+    } else if (transaction.type === "expense") {
+      primary.balance -= transaction.amount;
+    } else if (transaction.type === "transfer") {
+      primary.balance -= transaction.amount;
+      const destination = ensureAccount(transaction.toAccountId);
+      if (destination) {
+        destination.balance += transaction.amount;
+      }
+    }
+  });
+
+  return [...base, ...extras];
+};
+
+const baseSeedTransactions: Omit<Transaction, "accountId">[] = [
   {
     id: "t-1",
     amount: 38,
@@ -451,7 +577,19 @@ const seedTransactions: Transaction[] = [
   },
 ];
 
+const seedTransactions: Transaction[] = ensureAccountAssignments(
+  baseSeedTransactions,
+  DEFAULT_ACCOUNT_ID,
+);
+
+const seededAccounts = recalculateAccountBalances(
+  [createDefaultAccount("USD")],
+  seedTransactions,
+  "USD",
+);
+
 let uid = seedTransactions.length + 1;
+let accountUid = seededAccounts.length + 1;
 
 const nextOccurrenceForFrequency = (fromDate: string, frequency: RecurringTransaction["frequency"]) => {
   const base = new Date(fromDate);
@@ -474,6 +612,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     themeMode: "dark",
     categories: [...DEFAULT_CATEGORIES],
   },
+  accounts: seededAccounts,
   transactions: seedTransactions,
   recurringTransactions: [
     {
@@ -482,6 +621,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       note: "Coworking membership",
       type: "expense",
       category: "Work Expenses",
+      accountId: DEFAULT_ACCOUNT_ID,
       frequency: "monthly",
       nextOccurrence: daysAgo(-5),
       isActive: true,
@@ -492,6 +632,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       note: "Product design salary",
       type: "income",
       category: "Salary",
+      accountId: DEFAULT_ACCOUNT_ID,
       frequency: "monthly",
       nextOccurrence: daysAgo(-2),
       isActive: true,
@@ -502,6 +643,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       note: "Streaming subscriptions",
       type: "expense",
       category: "Lifestyle",
+      accountId: DEFAULT_ACCOUNT_ID,
       frequency: "monthly",
       nextOccurrence: daysAgo(6),
       isActive: true,
@@ -535,25 +677,31 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       const normalizedPhotos = transaction.photos ? transaction.photos.filter(Boolean) : [];
 
       const normalizedAmount = Math.round(transaction.amount * 100) / 100;
+      const normalizedAccountId = transaction.accountId || DEFAULT_ACCOUNT_ID;
+      const normalizedToAccountId = transaction.toAccountId || null;
+      const normalizedCategory =
+        transaction.type === "transfer" ? transaction.category || "Transfer" : transaction.category;
 
       const payload: Transaction = {
         id: `t-${uid++}`,
         ...transaction,
+        category: normalizedCategory,
         participants: normalizedParticipants,
         photos: normalizedPhotos,
         excludeFromReports: Boolean(transaction.excludeFromReports),
         amount: normalizedAmount,
         note: transaction.note.trim(),
         date: normalizedDate.toISOString(),
+        accountId: normalizedAccountId,
+        toAccountId: transaction.type === "transfer" ? normalizedToAccountId : null,
       };
 
-      return {
-        transactions: [payload, ...state.transactions],
-      };
+      const nextTransactions = [payload, ...state.transactions];
+      return applyAccountBalanceUpdate(state, nextTransactions);
     }),
   updateTransaction: (id, updates) =>
-    set((state) => ({
-      transactions: state.transactions.map((transaction) => {
+    set((state) => {
+      const nextTransactions = state.transactions.map((transaction) => {
         if (transaction.id !== id) {
           return transaction;
         }
@@ -595,13 +743,32 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
           next.date = normalized.toISOString();
         }
 
+        if (updates.accountId !== undefined) {
+          next.accountId = updates.accountId || DEFAULT_ACCOUNT_ID;
+        }
+
+        if (updates.toAccountId !== undefined) {
+          next.toAccountId = updates.toAccountId || null;
+        }
+
+        if (updates.type !== undefined && updates.type !== "transfer") {
+          next.toAccountId = null;
+        }
+
+        if (next.type === "transfer") {
+          next.category = next.category || "Transfer";
+        }
+
         return next;
-      }),
-    })),
+      });
+
+      return applyAccountBalanceUpdate(state, nextTransactions);
+    }),
   removeTransaction: (id) =>
-    set((state) => ({
-      transactions: state.transactions.filter((transaction) => transaction.id !== id),
-    })),
+    set((state) => {
+      const nextTransactions = state.transactions.filter((transaction) => transaction.id !== id);
+      return applyAccountBalanceUpdate(state, nextTransactions);
+    }),
   duplicateTransaction: (id) => {
     const existing = get().transactions.find((transaction) => transaction.id === id);
     if (!existing) {
@@ -614,6 +781,8 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       type: existing.type,
       category: existing.category,
       date: existing.date,
+      accountId: existing.accountId,
+      toAccountId: existing.toAccountId,
       participants: existing.participants ? [...existing.participants] : undefined,
       location: existing.location,
       photos: existing.photos ? [...existing.photos] : undefined,
@@ -641,12 +810,18 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         ? nextOccurrenceForFrequency(startDateIso, transaction.frequency)
         : startDateIso;
 
+      const normalizedAccountId = transaction.accountId || DEFAULT_ACCOUNT_ID;
+      const normalizedToAccountId =
+        transaction.type === "transfer" ? transaction.toAccountId || null : null;
+
       return {
         recurringTransactions: [
           ...state.recurringTransactions,
           {
             id: `r-${state.recurringTransactions.length + 1}`,
             ...transaction,
+            accountId: normalizedAccountId,
+            toAccountId: normalizedToAccountId,
             nextOccurrence,
             isActive: true,
           },
@@ -673,27 +848,33 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
 
     const nextOccurrence = nextOccurrenceForFrequency(recurring.nextOccurrence, recurring.frequency);
 
-    set((state) => ({
-      transactions: [
-        {
-          id: `t-${uid++}`,
-          amount: recurring.amount,
-          note: recurring.note,
-          type: recurring.type,
-          category: recurring.category,
-          date: recurring.nextOccurrence,
-        },
-        ...state.transactions,
-      ],
-      recurringTransactions: state.recurringTransactions.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              nextOccurrence,
-            }
-          : item,
-      ),
-    }));
+    set((state) => {
+      const entry: Transaction = {
+        id: `t-${uid++}`,
+        amount: recurring.amount,
+        note: recurring.note,
+        type: recurring.type,
+        category: recurring.category || (recurring.type === "transfer" ? "Transfer" : ""),
+        date: recurring.nextOccurrence,
+        accountId: recurring.accountId || DEFAULT_ACCOUNT_ID,
+        toAccountId: recurring.type === "transfer" ? recurring.toAccountId || null : null,
+      };
+
+      const nextTransactions = [entry, ...state.transactions];
+      const accountUpdate = applyAccountBalanceUpdate(state, nextTransactions);
+
+      return {
+        ...accountUpdate,
+        recurringTransactions: state.recurringTransactions.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                nextOccurrence,
+              }
+            : item,
+        ),
+      };
+    });
   },
   addBudgetGoal: (goal) =>
     set((state) => ({
@@ -734,6 +915,108 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         themeMode: mode,
       },
     })),
+  addAccount: ({ name, type, currency, initialBalance, excludeFromTotal }) =>
+    set((state) => {
+      const value = name.trim();
+      if (!value) {
+        return {};
+      }
+
+      const normalizedCurrency = (currency || state.profile.currency || "USD").trim().toUpperCase();
+      const parsedInitial = Number.isFinite(initialBalance)
+        ? Number(initialBalance)
+        : Number(initialBalance ?? 0);
+      const normalizedInitial = Number.isFinite(parsedInitial)
+        ? Math.round(parsedInitial * 100) / 100
+        : 0;
+
+      const nextAccount: Account = {
+        id: `account-${accountUid++}`,
+        name: value,
+        type,
+        initialBalance: normalizedInitial,
+        balance: normalizedInitial,
+        currency: normalizedCurrency,
+        excludeFromTotal: Boolean(excludeFromTotal),
+        isArchived: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      const nextAccounts = [...state.accounts, nextAccount];
+      return {
+        accounts: recalculateAccountBalances(nextAccounts, state.transactions, state.profile.currency),
+      };
+    }),
+  updateAccount: (id, updates) =>
+    set((state) => {
+      let mutated = false;
+      const nextAccounts = state.accounts.map((account) => {
+        if (account.id !== id) {
+          return account;
+        }
+
+        const next: Account = { ...account };
+        let changed = false;
+
+        if (updates.name !== undefined) {
+          const value = updates.name.trim();
+          if (value && value !== account.name) {
+            next.name = value;
+            changed = true;
+          }
+        }
+
+        if (updates.type !== undefined && updates.type !== account.type) {
+          next.type = updates.type;
+          changed = true;
+        }
+
+        if (updates.currency !== undefined) {
+          const value = updates.currency.trim().toUpperCase();
+          if (value && value !== account.currency) {
+            next.currency = value;
+            changed = true;
+          }
+        }
+
+        if (updates.initialBalance !== undefined) {
+          const normalized = Math.round(updates.initialBalance * 100) / 100;
+          if (!Number.isNaN(normalized) && normalized !== account.initialBalance) {
+            next.initialBalance = normalized;
+            changed = true;
+          }
+        }
+
+        if (updates.excludeFromTotal !== undefined && updates.excludeFromTotal !== account.excludeFromTotal) {
+          next.excludeFromTotal = updates.excludeFromTotal;
+          changed = true;
+        }
+
+        if (updates.isArchived !== undefined && updates.isArchived !== account.isArchived) {
+          next.isArchived = updates.isArchived;
+          changed = true;
+        }
+
+        if (changed) {
+          mutated = true;
+          return next;
+        }
+
+        return account;
+      });
+
+      if (!mutated) {
+        return {};
+      }
+
+      return {
+        accounts: recalculateAccountBalances(nextAccounts, state.transactions, state.profile.currency),
+      };
+    }),
+  archiveAccount: (id, archived = true) => {
+    const updateAccount = get().updateAccount;
+    updateAccount(id, { isArchived: archived });
+  },
   addCategory: (category) => {
     const value = category.name.trim();
     if (!value) {
@@ -771,3 +1054,9 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     }));
   },
 }));
+
+export const selectActiveAccounts = (state: FinanceState) =>
+  state.accounts.filter((account) => !account.isArchived);
+
+export const selectAccountById = (accountId: string) => (state: FinanceState) =>
+  state.accounts.find((account) => account.id === accountId);

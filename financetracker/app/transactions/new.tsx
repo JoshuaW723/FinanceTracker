@@ -26,6 +26,8 @@ export default function NewTransactionModal() {
           note: transaction.note,
           type: transaction.type,
           category: transaction.category,
+          accountId: transaction.accountId,
+          toAccountId: transaction.toAccountId,
           frequency: config.frequency,
           nextOccurrence: config.startDate,
           isActive: true,
