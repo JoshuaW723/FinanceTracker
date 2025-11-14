@@ -283,12 +283,12 @@ export default function TransactionsReportModal() {
           <View style={styles.categoryGrid}>
             <View style={styles.categoryColumn}>
               <Text style={styles.categoryColumnLabel}>Income</Text>
-              <PieChart data={report.incomeSlices} theme={theme} />
+              <PieChart data={report.incomeSlices} theme={theme} size={120} />
               <View style={styles.legend}>{renderLegend(report.incomeSlices, currency, theme)}</View>
             </View>
             <View style={styles.categoryColumn}>
               <Text style={styles.categoryColumnLabel}>Expense</Text>
-              <PieChart data={report.expenseSlices} theme={theme} />
+              <PieChart data={report.expenseSlices} theme={theme} size={120} />
               <View style={styles.legend}>{renderLegend(report.expenseSlices, currency, theme)}</View>
             </View>
           </View>
@@ -543,14 +543,16 @@ const createStyles = (theme: Theme) =>
     categoryGrid: {
       flexDirection: "row",
       gap: theme.spacing.md,
-      flexWrap: "wrap",
+      flexWrap: "nowrap",
+      alignItems: "stretch",
     },
     categoryColumn: {
       flex: 1,
-      minWidth: 200,
+      minWidth: 0,
+      flexBasis: 0,
       alignItems: "center",
       gap: theme.spacing.md,
-      padding: theme.spacing.lg,
+      padding: theme.spacing.md,
       borderRadius: theme.radii.lg,
       backgroundColor: theme.colors.surfaceElevated,
     },

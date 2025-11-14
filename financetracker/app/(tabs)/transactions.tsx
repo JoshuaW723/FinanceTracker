@@ -1283,7 +1283,7 @@ const createStyles = (theme: any, insets: any) =>
     
     // Recurring Section
     recurringSection: {
-      marginBottom: 24,
+      marginBottom: 12,
     },
     recurringHeader: {
       flexDirection: "row",
@@ -1345,7 +1345,7 @@ const createStyles = (theme: any, insets: any) =>
       textTransform: "uppercase",
       letterSpacing: 0.5,
       marginBottom: 8,
-      marginTop: 8,
+      marginTop: 4,
     },
     sectionHeaderContainer: {
       flexDirection: "row",
