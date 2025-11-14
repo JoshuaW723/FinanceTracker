@@ -113,6 +113,16 @@ export default function TransactionsReportModal() {
   const accounts = useFinanceStore((state) => state.accounts);
   const currency = useFinanceStore((state) => state.profile.currency) || "USD";
 
+  const baseCurrency = currency || "USD";
+  const visibleAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (account) => !account.excludeFromTotal && (account.currency || baseCurrency) === baseCurrency,
+      ),
+    [accounts, baseCurrency],
+  );
+  const visibleAccountIds = useMemo(() => visibleAccounts.map((account) => account.id), [visibleAccounts]);
+
   const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
   const resolvedPeriod = useMemo(() => {
     const key = typeof periodParam === "string" ? periodParam : undefined;
@@ -127,7 +137,17 @@ export default function TransactionsReportModal() {
   const rangeLabel = `${start.format("MMM D")} – ${end.format("MMM D, YYYY")}`;
 
   const report = useMemo(() => {
-    const scopedTransactions = filterTransactionsByAccount(transactions, selectedAccountId);
+    const allowedAccountIds = selectedAccountId ? null : new Set(visibleAccountIds);
+    const scopedTransactions = filterTransactionsByAccount(transactions, selectedAccountId).filter((transaction) => {
+      if (!allowedAccountIds || allowedAccountIds.size === 0) {
+        return true;
+      }
+
+      const fromAllowed = transaction.accountId ? allowedAccountIds.has(transaction.accountId) : false;
+      const toAllowed = transaction.toAccountId ? allowedAccountIds.has(transaction.toAccountId) : false;
+
+      return fromAllowed || toAllowed;
+    });
     const withinRange = scopedTransactions.filter((transaction) => {
       const date = dayjs(transaction.date);
       return !date.isBefore(start) && !date.isAfter(end);
@@ -196,7 +216,7 @@ export default function TransactionsReportModal() {
       incomeSlices: buildSlices("income", totals.income),
       expenseSlices: buildSlices("expense", totals.expense),
     };
-  }, [end, selectedAccountId, start, transactions]);
+  }, [end, selectedAccountId, start, transactions, visibleAccountIds]);
 
   const netPositive = report.netChange >= 0;
   const accountLabel = selectedAccountId ? accountName : "All accounts";
