@@ -9,6 +9,9 @@ export interface Account {
   name: string;
   type: AccountType;
   balance: number;
+  initialBalance: number;
+  currency: string;
+  excludeFromTotal?: boolean;
   isArchived?: boolean;
   createdAt: string;
 }
@@ -126,24 +129,40 @@ export interface FinanceState {
   updateProfile: (payload: Partial<Profile>) => void;
   setThemeMode: (mode: ThemeMode) => void;
   addCategory: (category: Omit<Category, "id">) => void;
-  addAccount: (account: { name: string; type: AccountType }) => void;
-  updateAccount: (id: string, updates: Partial<Pick<Account, "name" | "type" | "isArchived">>) => void;
+  addAccount: (
+    account: {
+      name: string;
+      type: AccountType;
+      currency?: string;
+      initialBalance?: number;
+      excludeFromTotal?: boolean;
+    },
+  ) => void;
+  updateAccount: (
+    id: string,
+    updates: Partial<
+      Pick<Account, "name" | "type" | "isArchived" | "currency" | "initialBalance" | "excludeFromTotal">
+    >,
+  ) => void;
   archiveAccount: (id: string, archived?: boolean) => void;
 }
 
 const applyAccountBalanceUpdate = (state: FinanceState, transactions: Transaction[]) => ({
   transactions,
-  accounts: recalculateAccountBalances(state.accounts, transactions),
+  accounts: recalculateAccountBalances(state.accounts, transactions, state.profile.currency),
 });
 
 const now = new Date();
 export const DEFAULT_ACCOUNT_ID = "account-main";
 
-const createDefaultAccount = (): Account => ({
+const createDefaultAccount = (currency: string): Account => ({
   id: DEFAULT_ACCOUNT_ID,
   name: "Everyday account",
   type: "bank",
   balance: 0,
+  initialBalance: 0,
+  currency,
+  excludeFromTotal: false,
   isArchived: false,
   createdAt: now.toISOString(),
 });
@@ -163,8 +182,18 @@ const ensureAccountAssignments = <T extends { accountId?: string | null }>(
     accountId: record.accountId ?? fallbackAccountId,
   }));
 
-const recalculateAccountBalances = (accounts: Account[], transactions: Transaction[]): Account[] => {
-  const base = accounts.map((account) => ({ ...account, balance: 0 }));
+const recalculateAccountBalances = (
+  accounts: Account[],
+  transactions: Transaction[],
+  fallbackCurrency: string,
+): Account[] => {
+  const base = accounts.map((account) => ({
+    ...account,
+    initialBalance: Number.isFinite(account.initialBalance) ? account.initialBalance : 0,
+    currency: account.currency || fallbackCurrency,
+    excludeFromTotal: account.excludeFromTotal ?? false,
+    balance: Number.isFinite(account.initialBalance) ? account.initialBalance : 0,
+  }));
   const extras: Account[] = [];
 
   const ensureAccount = (accountId?: string | null) => {
@@ -183,6 +212,9 @@ const recalculateAccountBalances = (accounts: Account[], transactions: Transacti
         name: "Legacy account",
         type: "cash",
         balance: 0,
+        initialBalance: 0,
+        currency: fallbackCurrency,
+        excludeFromTotal: true,
         isArchived: true,
         createdAt: new Date().toISOString(),
       };
@@ -550,7 +582,11 @@ const seedTransactions: Transaction[] = ensureAccountAssignments(
   DEFAULT_ACCOUNT_ID,
 );
 
-const seededAccounts = recalculateAccountBalances([createDefaultAccount()], seedTransactions);
+const seededAccounts = recalculateAccountBalances(
+  [createDefaultAccount("USD")],
+  seedTransactions,
+  "USD",
+);
 
 let uid = seedTransactions.length + 1;
 let accountUid = seededAccounts.length + 1;
@@ -879,25 +915,36 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         themeMode: mode,
       },
     })),
-  addAccount: ({ name, type }) =>
+  addAccount: ({ name, type, currency, initialBalance, excludeFromTotal }) =>
     set((state) => {
       const value = name.trim();
       if (!value) {
         return {};
       }
 
+      const normalizedCurrency = (currency || state.profile.currency || "USD").trim().toUpperCase();
+      const parsedInitial = Number.isFinite(initialBalance)
+        ? Number(initialBalance)
+        : Number(initialBalance ?? 0);
+      const normalizedInitial = Number.isFinite(parsedInitial)
+        ? Math.round(parsedInitial * 100) / 100
+        : 0;
+
       const nextAccount: Account = {
         id: `account-${accountUid++}`,
         name: value,
         type,
-        balance: 0,
+        initialBalance: normalizedInitial,
+        balance: normalizedInitial,
+        currency: normalizedCurrency,
+        excludeFromTotal: Boolean(excludeFromTotal),
         isArchived: false,
         createdAt: new Date().toISOString(),
       };
 
       const nextAccounts = [...state.accounts, nextAccount];
       return {
-        accounts: recalculateAccountBalances(nextAccounts, state.transactions),
+        accounts: recalculateAccountBalances(nextAccounts, state.transactions, state.profile.currency),
       };
     }),
   updateAccount: (id, updates) =>
@@ -924,6 +971,27 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
           changed = true;
         }
 
+        if (updates.currency !== undefined) {
+          const value = updates.currency.trim().toUpperCase();
+          if (value && value !== account.currency) {
+            next.currency = value;
+            changed = true;
+          }
+        }
+
+        if (updates.initialBalance !== undefined) {
+          const normalized = Math.round(updates.initialBalance * 100) / 100;
+          if (!Number.isNaN(normalized) && normalized !== account.initialBalance) {
+            next.initialBalance = normalized;
+            changed = true;
+          }
+        }
+
+        if (updates.excludeFromTotal !== undefined && updates.excludeFromTotal !== account.excludeFromTotal) {
+          next.excludeFromTotal = updates.excludeFromTotal;
+          changed = true;
+        }
+
         if (updates.isArchived !== undefined && updates.isArchived !== account.isArchived) {
           next.isArchived = updates.isArchived;
           changed = true;
@@ -942,7 +1010,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       }
 
       return {
-        accounts: recalculateAccountBalances(nextAccounts, state.transactions),
+        accounts: recalculateAccountBalances(nextAccounts, state.transactions, state.profile.currency),
       };
     }),
   archiveAccount: (id, archived = true) => {

@@ -277,6 +277,18 @@ export function TransactionForm({
     RecurringTransaction["frequency"]
   >("monthly");
 
+  const inheritedCategory = useMemo(() => {
+    if (!initialValues?.category) {
+      return undefined;
+    }
+
+    if (!initialValues?.type) {
+      return initialValues.category;
+    }
+
+    return initialValues.type === transactionType ? initialValues.category : undefined;
+  }, [initialValues?.category, initialValues?.type, transactionType]);
+
   useEffect(() => {
     if (initialValues?.amount !== undefined) {
       setAmount(formatNumberForInput(initialValues.amount, separators, groupingFormatter));
@@ -394,6 +406,10 @@ export function TransactionForm({
       return;
     }
 
+    if (transactionType === "transfer" && nextType !== "transfer") {
+      setSelectedCategory(null);
+    }
+
     if (selectedCategory && selectedCategory.type !== nextType) {
       setSelectedCategory(null);
     }
@@ -440,10 +456,11 @@ export function TransactionForm({
     const cleanedParticipants = participants.map((person) => person.trim()).filter(Boolean);
     const cleanedPhotos = photos.filter(Boolean);
 
+    const transferCategory = initialValues?.type === "transfer" ? initialValues?.category : undefined;
     const resolvedCategory =
       transactionType === "transfer"
-        ? initialValues?.category || "Transfer"
-        : selectedCategory?.name ?? initialValues?.category ?? "General";
+        ? transferCategory || "Transfer"
+        : selectedCategory?.name ?? inheritedCategory ?? "General";
     const fallbackNote =
       transactionType === "transfer"
         ? "Transfer"

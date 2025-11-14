@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -68,6 +69,9 @@ export default function AccountScreen() {
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [accountFormName, setAccountFormName] = useState("");
   const [accountFormType, setAccountFormType] = useState<AccountType>("bank");
+  const [accountFormCurrency, setAccountFormCurrency] = useState(profile.currency);
+  const [accountFormInitialBalance, setAccountFormInitialBalance] = useState("");
+  const [accountFormExcludeFromTotal, setAccountFormExcludeFromTotal] = useState(false);
 
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
@@ -133,10 +137,16 @@ export default function AccountScreen() {
       setEditingAccountId(account.id);
       setAccountFormName(account.name);
       setAccountFormType(account.type);
+      setAccountFormCurrency((account.currency || profile.currency).toUpperCase());
+      setAccountFormInitialBalance(account.initialBalance.toString());
+      setAccountFormExcludeFromTotal(Boolean(account.excludeFromTotal));
     } else {
       setEditingAccountId(null);
       setAccountFormName("");
       setAccountFormType("bank");
+      setAccountFormCurrency(profile.currency.toUpperCase());
+      setAccountFormInitialBalance("");
+      setAccountFormExcludeFromTotal(false);
     }
     setAccountModalVisible(true);
   };
@@ -146,6 +156,9 @@ export default function AccountScreen() {
     setEditingAccountId(null);
     setAccountFormName("");
     setAccountFormType("bank");
+    setAccountFormCurrency(profile.currency.toUpperCase());
+    setAccountFormInitialBalance("");
+    setAccountFormExcludeFromTotal(false);
   };
 
   const handleSaveAccount = () => {
@@ -154,13 +167,32 @@ export default function AccountScreen() {
       return;
     }
 
+    if (!accountFormCurrency.trim()) {
+      Alert.alert("Heads up", "Currency code cannot be empty.");
+      return;
+    }
+
+    const sanitizedBalance = accountFormInitialBalance.replace(/[^0-9.-]/g, "");
+    const parsedInitial = sanitizedBalance ? Number(sanitizedBalance) : 0;
+    const initialBalanceValue = Number.isNaN(parsedInitial) ? 0 : parsedInitial;
+    const normalizedCurrency = accountFormCurrency.trim().toUpperCase();
+
     if (editingAccountId) {
       updateAccountAction(editingAccountId, {
         name: accountFormName,
         type: accountFormType,
+        currency: normalizedCurrency,
+        initialBalance: initialBalanceValue,
+        excludeFromTotal: accountFormExcludeFromTotal,
       });
     } else {
-      addAccount({ name: accountFormName, type: accountFormType });
+      addAccount({
+        name: accountFormName,
+        type: accountFormType,
+        currency: normalizedCurrency,
+        initialBalance: initialBalanceValue,
+        excludeFromTotal: accountFormExcludeFromTotal,
+      });
     }
 
     handleCloseAccountModal();
@@ -287,8 +319,12 @@ export default function AccountScreen() {
                     <View style={styles.flex}>
                       <Text style={styles.accountName}>{account.name}</Text>
                       <Text style={styles.accountMeta}>
-                        {ACCOUNT_TYPE_LABELS[account.type]} • {formatCurrency(account.balance, profile.currency)}
+                        {ACCOUNT_TYPE_LABELS[account.type]} • {formatCurrency(
+                          account.balance,
+                          account.currency || profile.currency,
+                        )}
                         {account.isArchived ? " • Archived" : ""}
+                        {account.excludeFromTotal ? " • Excluded" : ""}
                       </Text>
                     </View>
                     <View style={styles.accountActions}>
@@ -522,6 +558,74 @@ export default function AccountScreen() {
               </View>
             </View>
 
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Currency</Text>
+              <View style={styles.row}>
+                <TextInput
+                  value={accountFormCurrency}
+                  onChangeText={(value) => setAccountFormCurrency(value.toUpperCase())}
+                  placeholder="USD"
+                  placeholderTextColor={theme.colors.textMuted}
+                  autoCapitalize="characters"
+                  style={[styles.input, styles.currencyInput, styles.flex]}
+                />
+                <ScrollView
+                  style={styles.flex}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipsRow}
+                >
+                  {currencies.map((code) => {
+                    const active = accountFormCurrency === code;
+                    return (
+                      <Pressable
+                        key={code}
+                        onPress={() => setAccountFormCurrency(code)}
+                        style={[styles.currencyChip, active && styles.currencyChipActive]}
+                      >
+                        <Text
+                          style={[
+                            styles.currencyChipText,
+                            active && styles.currencyChipTextActive,
+                          ]}
+                        >
+                          {code}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Initial balance</Text>
+              <TextInput
+                value={accountFormInitialBalance}
+                onChangeText={setAccountFormInitialBalance}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={theme.colors.textMuted}
+                style={styles.input}
+              />
+              <Text style={styles.helperText}>Set the starting balance for this account.</Text>
+            </View>
+
+            <View style={styles.toggleRow}>
+              <View style={styles.flex}>
+                <Text style={styles.label}>Exclude from totals</Text>
+                <Text style={styles.helperText}>
+                  Hide this wallet from total balance and overview cards.
+                </Text>
+              </View>
+              <Switch
+                value={accountFormExcludeFromTotal}
+                onValueChange={setAccountFormExcludeFromTotal}
+                thumbColor={accountFormExcludeFromTotal ? theme.colors.primary : theme.colors.surface}
+                trackColor={{ true: `${theme.colors.primary}55`, false: theme.colors.border }}
+              />
+            </View>
+
             <View style={styles.modalActions}>
               <Pressable style={styles.secondaryButton} onPress={handleCloseAccountModal}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
@@ -583,6 +687,11 @@ const createStyles = (
       letterSpacing: 1.2,
     },
     sectionSubtitle: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      marginTop: 4,
+    },
+    helperText: {
       fontSize: 13,
       color: theme.colors.textMuted,
       marginTop: 4,
@@ -717,6 +826,12 @@ const createStyles = (
     row: {
       flexDirection: "row",
       gap: theme.spacing.sm,
+    },
+    toggleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.md,
     },
     chipCloud: {
       flexDirection: "row",

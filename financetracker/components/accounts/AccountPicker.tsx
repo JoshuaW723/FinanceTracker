@@ -69,14 +69,23 @@ export function AccountPicker({
         style={[styles.trigger, theme.components.inputSurface]}
         onPress={() => setModalVisible(true)}
       >
-        <Text style={[styles.triggerText, !selectedAccount && styles.placeholderText]}>
+        <Text
+          style={[
+            styles.triggerText,
+            { color: theme.colors.text },
+            !selectedAccount && { color: theme.colors.textMuted },
+          ]}
+        >
           {selectedAccount ? selectedAccount.name : placeholder}
         </Text>
         <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
       </Pressable>
       {selectedAccount ? (
         <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>
-          {`${ACCOUNT_TYPE_LABELS[selectedAccount.type]} • ${formatCurrency(selectedAccount.balance, currency)}`}
+          {`${ACCOUNT_TYPE_LABELS[selectedAccount.type]} • ${formatCurrency(
+            selectedAccount.balance,
+            selectedAccount.currency || currency,
+          )}`}
         </Text>
       ) : helperText ? (
         <Text style={[styles.helperText, { color: theme.colors.textMuted }]}>{helperText}</Text>
@@ -117,7 +126,10 @@ export function AccountPicker({
                     <View style={styles.accountInfo}>
                       <Text style={[styles.accountName, { color: theme.colors.text }]}>{account.name}</Text>
                       <Text style={[styles.accountMeta, { color: theme.colors.textMuted }]}>
-                        {`${ACCOUNT_TYPE_LABELS[account.type]} • ${formatCurrency(account.balance, currency)}`}
+                        {`${ACCOUNT_TYPE_LABELS[account.type]} • ${formatCurrency(
+                          account.balance,
+                          account.currency || currency,
+                        )}`}
                       </Text>
                     </View>
                     {active && <Ionicons name="checkmark" size={18} color={theme.colors.primary} />}
@@ -163,9 +175,6 @@ const styles = StyleSheet.create({
   triggerText: {
     fontSize: 16,
     flex: 1,
-  },
-  placeholderText: {
-    color: "#999",
   },
   helperText: {
     fontSize: 13,

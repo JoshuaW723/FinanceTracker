@@ -86,11 +86,6 @@ export default function HomeScreen() {
 
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
-  const scopedTransactions = useMemo(
-    () => filterTransactionsByAccount(reportableTransactions, selectedAccountId),
-    [reportableTransactions, selectedAccountId],
-  );
-
   const accountLookup = useMemo(() => {
     const map = new Map<string, string>();
     accounts.forEach((account) => map.set(account.id, account.name));
@@ -107,17 +102,41 @@ export default function HomeScreen() {
     [accountLookup],
   );
 
-  const allAccountsBalance = useMemo(
-    () => accounts.reduce((acc, account) => acc + account.balance, 0),
-    [accounts],
+  const baseCurrency = profile.currency || "USD";
+  const visibleAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (account) => !account.excludeFromTotal && (account.currency || baseCurrency) === baseCurrency,
+      ),
+    [accounts, baseCurrency],
   );
 
-  const balance = useMemo(() => {
-    if (selectedAccountId) {
-      return accounts.find((account) => account.id === selectedAccountId)?.balance ?? 0;
-    }
-    return allAccountsBalance;
-  }, [accounts, allAccountsBalance, selectedAccountId]);
+  const visibleAccountIds = useMemo(() => visibleAccounts.map((account) => account.id), [visibleAccounts]);
+
+  const scopedTransactions = useMemo(() => {
+    const allowedAccountIds = selectedAccountId ? null : new Set(visibleAccountIds);
+    return filterTransactionsByAccount(reportableTransactions, selectedAccountId).filter((transaction) => {
+      if (!allowedAccountIds || allowedAccountIds.size === 0) {
+        return true;
+      }
+
+      const fromAllowed = transaction.accountId ? allowedAccountIds.has(transaction.accountId) : false;
+      const toAllowed = transaction.toAccountId ? allowedAccountIds.has(transaction.toAccountId) : false;
+      return fromAllowed || toAllowed;
+    });
+  }, [reportableTransactions, selectedAccountId, visibleAccountIds]);
+
+  const allAccountsBalance = useMemo(
+    () => visibleAccounts.reduce((acc, account) => acc + account.balance, 0),
+    [visibleAccounts],
+  );
+
+  const selectedAccount = useMemo(
+    () => accounts.find((account) => account.id === selectedAccountId) ?? null,
+    [accounts, selectedAccountId],
+  );
+
+  const balance = selectedAccount ? selectedAccount.balance : allAccountsBalance;
 
   const [overviewPeriod, setOverviewPeriod] = useState<"week" | "month">("month");
   const [overviewChart, setOverviewChart] = useState<"bar" | "line">("bar");
@@ -371,7 +390,7 @@ export default function HomeScreen() {
     [donutColors, topSpending.entries],
   );
 
-  const currency = profile.currency || "USD";
+  const currency = selectedAccount?.currency || baseCurrency;
   const formattedBalance = formatCurrency(balance, currency);
   const formattedPeriodExpenses = formatCurrency(periodExpense, currency);
 
@@ -424,17 +443,19 @@ export default function HomeScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.accountChipRow}
         >
-          <Pressable
-            onPress={() => setSelectedAccountId(null)}
-            style={[styles.accountChip, !selectedAccountId && styles.accountChipActive]}
-          >
-            <Text style={styles.accountChipTitle}>All accounts</Text>
-            <Text style={styles.accountChipBalance}>{formatCurrency(allAccountsBalance, currency)}</Text>
-          </Pressable>
-          {accounts.map((account) => {
-            const active = selectedAccountId === account.id;
-            return (
-              <Pressable
+            <Pressable
+              onPress={() => setSelectedAccountId(null)}
+              style={[styles.accountChip, !selectedAccountId && styles.accountChipActive]}
+            >
+              <Text style={styles.accountChipTitle}>All accounts</Text>
+              <Text style={styles.accountChipBalance}>
+                {formatCurrency(allAccountsBalance, baseCurrency)}
+              </Text>
+            </Pressable>
+            {accounts.map((account) => {
+              const active = selectedAccountId === account.id;
+              return (
+                <Pressable
                 key={account.id}
                 onPress={() => setSelectedAccountId(account.id)}
                 style={[
@@ -442,14 +463,14 @@ export default function HomeScreen() {
                   active && styles.accountChipActive,
                   account.isArchived && styles.accountChipArchived,
                 ]}
-              >
-                <Text style={styles.accountChipTitle}>{account.name}</Text>
-                <Text style={styles.accountChipBalance}>
-                  {formatCurrency(account.balance, currency)}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  >
+                    <Text style={styles.accountChipTitle}>{account.name}</Text>
+                    <Text style={styles.accountChipBalance}>
+                      {formatCurrency(account.balance, account.currency || baseCurrency)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
         </ScrollView>
 
         <View style={[theme.components.card, styles.balanceCard]}>
