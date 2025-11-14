@@ -203,23 +203,36 @@ export default function TransactionsReportModal() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <View style={styles.backgroundAccent} pointerEvents="none">
+        <View style={styles.accentBlobPrimary} />
+        <View style={styles.accentBlobSecondary} />
+      </View>
       <View style={styles.header}>
-        <Pressable style={styles.closeButton} onPress={() => router.back()}>
-          <Ionicons name="close" size={20} color={theme.colors.text} />
-          <Text style={styles.closeLabel}>Close</Text>
+        <Pressable
+          style={styles.closeButton}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Close report"
+        >
+          <Ionicons name="chevron-down" size={24} color={theme.colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Report</Text>
+        <Text style={styles.headerTitle}>Period report</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
+      >
         <View style={styles.metaRow}>
-          <View>
+          <View style={styles.metaItem}>
             <Text style={styles.metaLabel}>Period</Text>
             <Text style={styles.metaValue}>{resolvedPeriod.label}</Text>
             <Text style={styles.metaSubValue}>{rangeLabel}</Text>
           </View>
-          <View>
+          <View style={styles.metaItem}>
             <Text style={styles.metaLabel}>Account</Text>
             <Text style={styles.metaValue}>{accountLabel}</Text>
           </View>
@@ -342,49 +355,81 @@ const createStyles = (theme: Theme) =>
       flex: 1,
       backgroundColor: theme.colors.background,
     },
+    backgroundAccent: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 220,
+      overflow: "hidden",
+    },
+    accentBlobPrimary: {
+      position: "absolute",
+      top: -140,
+      right: -40,
+      width: 280,
+      height: 280,
+      borderRadius: 220,
+      backgroundColor: `${theme.colors.primary}18`,
+      transform: [{ rotate: "12deg" }],
+    },
+    accentBlobSecondary: {
+      position: "absolute",
+      top: -20,
+      left: -80,
+      width: 220,
+      height: 220,
+      borderRadius: 180,
+      backgroundColor: `${theme.colors.accent}18`,
+    },
+    flex: {
+      flex: 1,
+    },
     header: {
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.lg,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingHorizontal: 20,
-      paddingVertical: 12,
     },
     closeButton: {
-      flexDirection: "row",
+      width: 36,
+      height: 36,
       alignItems: "center",
-      gap: 6,
-    },
-    closeLabel: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: theme.colors.text,
+      justifyContent: "center",
+      borderRadius: theme.radii.md,
+      backgroundColor: theme.colors.surface,
     },
     headerTitle: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: theme.colors.text,
+      ...theme.typography.title,
+      fontSize: 22,
     },
     headerSpacer: {
-      width: 60,
+      width: 36,
     },
     content: {
-      padding: 20,
-      gap: 16,
-      paddingBottom: 40,
+      paddingHorizontal: theme.spacing.xl,
+      paddingTop: theme.spacing.lg,
+      paddingBottom: theme.spacing.xl + 16,
+      gap: theme.spacing.lg,
     },
     metaRow: {
+      ...theme.components.card,
       flexDirection: "row",
       justifyContent: "space-between",
-      padding: 16,
-      borderRadius: 16,
-      backgroundColor: theme.colors.surface,
+      gap: theme.spacing.xl,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}12`,
+    },
+    metaItem: {
+      flex: 1,
+      gap: 4,
     },
     metaLabel: {
       fontSize: 12,
       textTransform: "uppercase",
       letterSpacing: 0.5,
       color: theme.colors.textMuted,
-      marginBottom: 4,
     },
     metaValue: {
       fontSize: 18,
@@ -396,14 +441,16 @@ const createStyles = (theme: Theme) =>
       color: theme.colors.textMuted,
     },
     balanceCard: {
-      backgroundColor: theme.colors.surface,
-      borderRadius: 20,
-      padding: 20,
-      gap: 12,
+      ...theme.components.card,
+      borderRadius: theme.radii.lg,
+      gap: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}10`,
     },
     balanceHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
+      alignItems: "center",
     },
     balanceOverline: {
       fontSize: 12,
@@ -415,7 +462,7 @@ const createStyles = (theme: Theme) =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 12,
+      gap: theme.spacing.md,
     },
     balanceValue: {
       fontSize: 20,
@@ -425,12 +472,12 @@ const createStyles = (theme: Theme) =>
     balanceRange: {
       fontSize: 12,
       color: theme.colors.textMuted,
+      lineHeight: 18,
     },
     netCard: {
-      backgroundColor: theme.colors.surface,
-      borderRadius: 20,
-      padding: 20,
-      gap: 12,
+      ...theme.components.card,
+      borderRadius: theme.radii.lg,
+      gap: theme.spacing.md,
     },
     netHeader: {
       flexDirection: "row",
@@ -454,12 +501,14 @@ const createStyles = (theme: Theme) =>
     }),
     netBreakdownRow: {
       flexDirection: "row",
-      gap: 16,
+      gap: theme.spacing.md,
+      flexWrap: "wrap",
     },
     netBreakdownItem: {
       flex: 1,
-      padding: 12,
-      borderRadius: 14,
+      minWidth: 140,
+      padding: theme.spacing.md,
+      borderRadius: theme.radii.md,
       backgroundColor: theme.colors.surfaceElevated,
     },
     netLabel: {
@@ -475,10 +524,9 @@ const createStyles = (theme: Theme) =>
       color,
     }),
     categoryCard: {
-      backgroundColor: theme.colors.surface,
-      borderRadius: 20,
-      padding: 20,
-      gap: 20,
+      ...theme.components.card,
+      borderRadius: theme.radii.lg,
+      gap: theme.spacing.lg,
     },
     categoryHeader: {
       gap: 4,
@@ -494,12 +542,17 @@ const createStyles = (theme: Theme) =>
     },
     categoryGrid: {
       flexDirection: "row",
-      gap: 16,
+      gap: theme.spacing.md,
+      flexWrap: "wrap",
     },
     categoryColumn: {
       flex: 1,
+      minWidth: 200,
       alignItems: "center",
-      gap: 12,
+      gap: theme.spacing.md,
+      padding: theme.spacing.lg,
+      borderRadius: theme.radii.lg,
+      backgroundColor: theme.colors.surfaceElevated,
     },
     categoryColumnLabel: {
       fontSize: 14,

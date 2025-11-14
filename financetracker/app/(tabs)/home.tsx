@@ -481,7 +481,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             onPress={() => router.push("/(tabs)/transactions")}
           >
-            <Text style={styles.reportsText}>View reports</Text>
+            <Text style={styles.reportsText}>View transactions</Text>
             <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
           </Pressable>
         </View>

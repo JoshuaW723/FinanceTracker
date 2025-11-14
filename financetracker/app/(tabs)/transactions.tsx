@@ -170,7 +170,7 @@ export default function TransactionsScreen() {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [recurringExpanded, setRecurringExpanded] = useState(true);
+  const [recurringExpanded, setRecurringExpanded] = useState(false);
 
   useEffect(() => {
     if (!categoryParam) {
@@ -599,7 +599,7 @@ export default function TransactionsScreen() {
 
               <Pressable style={styles.reportButton} onPress={handleOpenReport}>
                 <Text style={styles.reportButtonText}>View report for this period</Text>
-                <Ionicons name="arrow-forward" size={16} color="#fff" />
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
               </Pressable>
             </View>
 
@@ -1118,19 +1118,21 @@ const createStyles = (theme: any, insets: any) =>
     },
     reportButton: {
       marginTop: 16,
-      backgroundColor: theme.colors.primary,
-      borderRadius: 12,
-      paddingVertical: 14,
+      backgroundColor: `${theme.colors.primary}12`,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}30`,
+      paddingVertical: 12,
       paddingHorizontal: 18,
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
+      justifyContent: "center",
+      gap: 6,
     },
     reportButtonText: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "600",
-      color: "#fff",
+      color: theme.colors.primary,
     },
 
     // Period Selector
