@@ -272,8 +272,9 @@ export default function NetIncomeDetailsScreen() {
             </View>
           </View>
 
-          <View style={[styles.chartArea, { height: chartHeight }]}> 
+          <View style={[styles.chartArea, { height: chartHeight }]}>
             <View style={styles.axisColumn}>
+              <View style={styles.axisLine(theme)} />
               {[...positiveTicks].reverse().map((tick) => (
                 <View
                   key={`axis-pos-${tick}`}
@@ -285,6 +286,7 @@ export default function NetIncomeDetailsScreen() {
                       minimumFractionDigits: tickFractionDigits,
                     })}
                   </Text>
+                  <View style={styles.axisTickMark(theme)} />
                 </View>
               ))}
               {[...positiveTicks].map((tick) => (
@@ -298,10 +300,12 @@ export default function NetIncomeDetailsScreen() {
                       minimumFractionDigits: tickFractionDigits,
                     })}
                   </Text>
+                  <View style={styles.axisTickMark(theme)} />
                 </View>
               ))}
               <View style={[styles.axisTick, { top: halfHeight }]}>
                 <Text style={styles.axisTickLabel}>0</Text>
+                <View style={styles.axisTickMark(theme)} />
               </View>
             </View>
 
@@ -540,15 +544,35 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       width: 72,
       position: "relative",
       height: "100%",
+      paddingRight: theme.spacing.sm,
     },
     axisTick: {
       position: "absolute",
       left: 0,
+      right: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
     },
     axisTickLabel: {
       fontSize: 12,
       color: theme.colors.textMuted,
+      textAlign: "right",
     },
+    axisTickMark: (theme: ReturnType<typeof useAppTheme>) => ({
+      width: 12,
+      height: 1,
+      marginLeft: theme.spacing.xs,
+      backgroundColor: `${theme.colors.textMuted}70`,
+    }),
+    axisLine: (theme: ReturnType<typeof useAppTheme>) => ({
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      right: theme.spacing.xs,
+      width: 1,
+      backgroundColor: `${theme.colors.border}aa`,
+    }),
     barArea: {
       flex: 1,
       height: "100%",
@@ -566,8 +590,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       left: 0,
       right: 0,
       height: 1,
-      backgroundColor: theme.colors.border,
-      opacity: 0.35,
+      backgroundColor: `${theme.colors.textMuted}60`,
+      opacity: 0.55,
     },
     zeroGrid: (theme: ReturnType<typeof useAppTheme>) => ({
       backgroundColor: theme.colors.border,
@@ -628,7 +652,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingVertical: theme.spacing.lg,
       paddingHorizontal: theme.spacing.lg,
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radii.xl * 1.25,
+      borderRadius: theme.radii.lg * 1.25,
       marginTop: theme.spacing.xs,
       borderWidth: 1,
       borderColor: `${theme.colors.border}80`,
@@ -683,7 +707,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     netPill: (positive: boolean, theme: ReturnType<typeof useAppTheme>) => ({
       paddingHorizontal: theme.spacing.md,
       paddingVertical: 8,
-      borderRadius: theme.radii.xl,
+      borderRadius: theme.radii.pill,
       backgroundColor: positive ? `${theme.colors.success}22` : `${theme.colors.danger}22`,
     }),
     netPillText: (positive: boolean, theme: ReturnType<typeof useAppTheme>) => ({
