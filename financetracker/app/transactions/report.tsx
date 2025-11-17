@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -151,6 +151,15 @@ export default function TransactionsReportModal() {
 
   const [periodPickerVisible, setPeriodPickerVisible] = useState(false);
   const [accountPickerVisible, setAccountPickerVisible] = useState(false);
+
+  const handleOpenNetDetails = useCallback(() => {
+    const params: Record<string, string> = { period: selectedPeriod.key };
+    if (selectedAccountId) {
+      params.accountId = selectedAccountId;
+    }
+
+    router.push({ pathname: "/transactions/net-income-details", params });
+  }, [router, selectedAccountId, selectedPeriod.key]);
 
   const report = useMemo(() => {
     const allowedAccountIds = selectedAccountId ? null : new Set(visibleAccountIds);
@@ -315,7 +324,15 @@ export default function TransactionsReportModal() {
         <View style={styles.netCard}>
           <View style={styles.netHeader}>
             <Text style={styles.netTitle}>Net income</Text>
-            <Text style={styles.netLink}>See details</Text>
+            <Pressable
+              onPress={handleOpenNetDetails}
+              style={styles.netLinkButton}
+              accessibilityRole="button"
+              accessibilityLabel="Open net income details"
+            >
+              <Text style={styles.netLink}>See details</Text>
+              <Ionicons name="chevron-forward" size={14} color={theme.colors.textMuted} />
+            </Pressable>
           </View>
           <Text style={styles.netAmount(netPositive)}>
             {formatCurrency(report.netChange, currency, { signDisplay: "always" })}
@@ -671,6 +688,15 @@ const createStyles = (theme: Theme) =>
       fontSize: 16,
       fontWeight: "600",
       color: theme.colors.text,
+    },
+    netLinkButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: theme.spacing.xs,
+      paddingVertical: theme.spacing.xs,
+      borderRadius: theme.radii.md,
+      backgroundColor: `${theme.colors.primary}12`,
     },
     netLink: {
       fontSize: 13,
