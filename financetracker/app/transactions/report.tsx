@@ -126,10 +126,14 @@ export default function TransactionsReportModal() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() =>
     typeof accountId === "string" && accountId.length ? accountId : null,
   );
-  const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
+  const selectedAccount = useMemo(
+    () => (selectedAccountId ? accounts.find((account) => account.id === selectedAccountId) : null),
+    [accounts, selectedAccountId],
+  );
+  const periodOptions = useMemo(() => buildMonthlyPeriods().slice().reverse(), []);
   const resolvedPeriod = useMemo(() => {
     const key = typeof periodParam === "string" ? periodParam : undefined;
-    return periodOptions.find((option) => option.key === key) ?? periodOptions[periodOptions.length - 1];
+    return periodOptions.find((option) => option.key === key) ?? periodOptions[0];
   }, [periodOptions, periodParam]);
 
   const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>(() => resolvedPeriod.key);
@@ -139,10 +143,11 @@ export default function TransactionsReportModal() {
   );
 
   const { start, end } = useMemo(() => selectedPeriod.range(), [selectedPeriod]);
-  const accountName = selectedAccountId
-    ? accounts.find((account) => account.id === selectedAccountId)?.name ?? "Selected account"
-    : "All accounts";
+  const accountName = selectedAccount?.name ?? "All accounts";
   const rangeLabel = `${start.format("MMM D")} – ${end.format("MMM D, YYYY")}`;
+  const accountTypeLabel = selectedAccount
+    ? `${selectedAccount.type.charAt(0).toUpperCase()}${selectedAccount.type.slice(1)} account`
+    : "Using all visible accounts";
 
   const [periodPickerVisible, setPeriodPickerVisible] = useState(false);
   const [accountPickerVisible, setAccountPickerVisible] = useState(false);
@@ -260,7 +265,6 @@ export default function TransactionsReportModal() {
         <View style={styles.selectorCard}>
           <View style={styles.selectorHeader}>
             <Text style={styles.selectorTitle}>Report scope</Text>
-            <Text style={styles.selectorSubtitle}>Adjust the period and account to explore.</Text>
           </View>
           <View style={styles.selectorRow}>
             <Pressable
@@ -290,7 +294,7 @@ export default function TransactionsReportModal() {
                 <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
               </View>
               <Text style={styles.selectorHint} numberOfLines={1}>
-                {selectedAccountId ? "Filtered to one account" : "Using all visible accounts"}
+                {accountTypeLabel}
               </Text>
             </Pressable>
           </View>
