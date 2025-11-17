@@ -192,7 +192,7 @@ export default function NetIncomeDetailsScreen() {
     };
   }, [weeklySummaries]);
 
-  const chartHeight = 190;
+  const chartHeight = 176;
   const halfHeight = chartHeight / 2;
   const tickFractionDigits = maxScaleValue < 1 ? 2 : maxScaleValue < 10 ? 1 : 0;
 
@@ -278,13 +278,17 @@ export default function NetIncomeDetailsScreen() {
             </View>
           </View>
 
-          <View style={[styles.chartArea, { height: chartHeight }]}>
-            <View style={styles.axisColumn}>
+          <View style={styles.chartArea}>
+            <View style={[styles.axisColumn, { height: chartHeight }]}>
               <View style={styles.axisLine(theme)} />
               {[...positiveTicks].reverse().map((tick) => (
                 <View
                   key={`axis-pos-${tick}`}
-                  style={[styles.axisTick, { top: halfHeight - (tick / maxScaleValue) * halfHeight }]}
+                  style={[
+                    styles.axisTick,
+                    styles.axisTickAnchor,
+                    { top: halfHeight - (tick / maxScaleValue) * halfHeight },
+                  ]}
                 >
                   <Text style={styles.axisTickLabel}>
                     {formatCurrency(tick, currency, {
@@ -298,7 +302,11 @@ export default function NetIncomeDetailsScreen() {
               {[...positiveTicks].map((tick) => (
                 <View
                   key={`axis-neg-${tick}`}
-                  style={[styles.axisTick, { top: halfHeight + (tick / maxScaleValue) * halfHeight }]}
+                  style={[
+                    styles.axisTick,
+                    styles.axisTickAnchor,
+                    { top: halfHeight + (tick / maxScaleValue) * halfHeight },
+                  ]}
                 >
                   <Text style={styles.axisTickLabel}>
                     {formatCurrency(-tick, currency, {
@@ -309,37 +317,47 @@ export default function NetIncomeDetailsScreen() {
                   <View style={styles.axisTickMark(theme)} />
                 </View>
               ))}
-              <View style={[styles.axisTick, { top: halfHeight }]}>
+              <View style={[styles.axisTick, styles.axisTickAnchor, { top: halfHeight }]}>
                 <Text style={styles.axisTickLabel}>0</Text>
                 <View style={styles.axisTickMark(theme)} />
               </View>
             </View>
 
-              <View style={styles.barArea}>
-                <View style={styles.gridLayer(theme)} pointerEvents="none">
-                  {[...positiveTicks].map((tick) => (
-                    <View
+            <View style={[styles.barArea, { height: chartHeight }]}>
+              <View style={styles.gridLayer(theme)} pointerEvents="none">
+                {[...positiveTicks].map((tick) => (
+                  <View
                     key={`grid-pos-${tick}`}
-                    style={[styles.gridLine, { top: halfHeight - (tick / maxScaleValue) * halfHeight }]}
+                    style={[
+                      styles.gridLine,
+                      { top: halfHeight - (tick / maxScaleValue) * halfHeight },
+                    ]}
                   />
                 ))}
                 {[...positiveTicks].map((tick) => (
                   <View
                     key={`grid-neg-${tick}`}
-                    style={[styles.gridLine, { top: halfHeight + (tick / maxScaleValue) * halfHeight }]}
+                    style={[
+                      styles.gridLine,
+                      { top: halfHeight + (tick / maxScaleValue) * halfHeight },
+                    ]}
                   />
                 ))}
-                <View style={[styles.gridLine, styles.zeroGrid(theme), { top: halfHeight }]} />
+                <View
+                  style={[
+                    styles.gridLine,
+                    styles.zeroGrid(theme),
+                    { top: halfHeight, transform: [{ translateY: -0.5 }] },
+                  ]}
+                />
               </View>
 
               <View style={styles.barRow}>
                 {weeklySummaries.map((week) => {
-                  const incomeHeight = week.income === 0
-                    ? 0
-                    : Math.max(6, (week.income / maxScaleValue) * halfHeight);
-                  const expenseHeight = week.expense === 0
-                    ? 0
-                    : Math.max(6, (week.expense / maxScaleValue) * halfHeight);
+                  const incomeHeight =
+                    week.income === 0 ? 0 : Math.max(6, (week.income / maxScaleValue) * halfHeight);
+                  const expenseHeight =
+                    week.expense === 0 ? 0 : Math.max(6, (week.expense / maxScaleValue) * halfHeight);
                   return (
                     <View key={week.label} style={styles.barColumn}>
                       <View style={[styles.barStack, { height: chartHeight }]}>
@@ -552,9 +570,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     chartArea: {
       flexDirection: "row",
       alignItems: "flex-start",
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.md,
       paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
       borderRadius: theme.radii.lg,
       backgroundColor: theme.colors.surfaceElevated,
       position: "relative",
@@ -565,6 +583,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       position: "relative",
       height: "100%",
       paddingRight: theme.spacing.sm,
+    },
+    axisTickAnchor: {
+      transform: [{ translateY: -8 }],
     },
     axisTick: {
       position: "absolute",
@@ -612,6 +633,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       height: 1,
       backgroundColor: `${theme.colors.textMuted}60`,
       opacity: 0.55,
+      transform: [{ translateY: -0.5 }],
     },
     zeroGrid: (theme: ReturnType<typeof useAppTheme>) => ({
       backgroundColor: theme.colors.border,
