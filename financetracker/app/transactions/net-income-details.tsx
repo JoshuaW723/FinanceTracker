@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
+import Svg, { Line as SvgLine, Rect } from "react-native-svg";
 
 import { useAppTheme } from "../../theme";
 import { useFinanceStore } from "../../lib/store";
@@ -68,6 +69,21 @@ const buildWeeksForMonth = (start: dayjs.Dayjs, end: dayjs.Dayjs) => {
   }
 
   return weeks;
+};
+
+const niceStep = (value: number) => {
+  if (value <= 0) return 1;
+
+  const exponent = Math.floor(Math.log10(value));
+  const fraction = value / Math.pow(10, exponent);
+
+  let niceFraction: number;
+  if (fraction <= 1) niceFraction = 1;
+  else if (fraction <= 2) niceFraction = 2;
+  else if (fraction <= 5) niceFraction = 5;
+  else niceFraction = 10;
+
+  return niceFraction * Math.pow(10, exponent);
 };
 
 export default function NetIncomeDetailsScreen() {
@@ -171,30 +187,30 @@ export default function NetIncomeDetailsScreen() {
   );
 
   const totalNet = weeklySummaries.reduce((acc, week) => acc + week.net, 0);
+  const [chartWidth, setChartWidth] = useState(0);
 
-  const { positiveTicks, maxScaleValue } = useMemo(() => {
-    const maxMagnitude = Math.max(
+  const { ticks, maxValue } = useMemo(() => {
+    const maxAbs = Math.max(
       0,
-      ...weeklySummaries.map((week) => Math.max(week.income, week.expense)),
+      ...weeklySummaries.map((week) => Math.max(Math.abs(week.income), Math.abs(week.expense))),
     );
 
-    if (maxMagnitude === 0) {
-      return { positiveTicks: [1, 2, 3], maxScaleValue: 3 };
+    if (maxAbs === 0) {
+      return { ticks: [1, 2, 3], maxValue: 3 };
     }
 
-    const rawStep = maxMagnitude / 3;
-    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
-    const niceStep = Math.ceil(rawStep / magnitude) * magnitude;
+    const step = niceStep(maxAbs / 3);
+    const limit = step * 3;
 
     return {
-      positiveTicks: [niceStep, niceStep * 2, niceStep * 3],
-      maxScaleValue: niceStep * 3,
+      ticks: [step, step * 2, step * 3],
+      maxValue: limit,
     };
   }, [weeklySummaries]);
 
-  const chartHeight = 176;
+  const chartHeight = 184;
   const halfHeight = chartHeight / 2;
-  const tickFractionDigits = maxScaleValue < 1 ? 2 : maxScaleValue < 10 ? 1 : 0;
+  const tickFractionDigits = maxValue < 1 ? 2 : maxValue < 10 ? 1 : 0;
 
   const handleOpenWeek = (week: WeeklySummary) => {
     router.push({
@@ -280,33 +296,26 @@ export default function NetIncomeDetailsScreen() {
 
           <View style={styles.chartArea}>
             <View style={[styles.axisColumn, { height: chartHeight }]}>
-              <View style={styles.axisLine(theme)} />
-              {[...positiveTicks].reverse().map((tick) => (
-                <View
-                  key={`axis-pos-${tick}`}
-                  style={[
-                    styles.axisTick,
-                    styles.axisTickAnchor,
-                    { top: halfHeight - (tick / maxScaleValue) * halfHeight },
-                  ]}
-                >
-                  <Text style={styles.axisTickLabel}>
-                    {formatCurrency(tick, currency, {
-                      maximumFractionDigits: tickFractionDigits,
-                      minimumFractionDigits: tickFractionDigits,
-                    })}
-                  </Text>
-                  <View style={styles.axisTickMark(theme)} />
-                </View>
-              ))}
-              {[...positiveTicks].map((tick) => (
+              {ticks
+                .map((tick) => ({ tick, y: halfHeight - (tick / maxValue) * halfHeight }))
+                .reverse()
+                .map(({ tick, y }) => (
+                  <View key={`axis-pos-${tick}`} style={[styles.axisLabelRow, { top: y }]}>
+                    <Text style={styles.axisTickLabel}>
+                      {formatCurrency(tick, currency, {
+                        maximumFractionDigits: tickFractionDigits,
+                        minimumFractionDigits: tickFractionDigits,
+                      })}
+                    </Text>
+                  </View>
+                ))}
+              <View style={[styles.axisLabelRow, { top: halfHeight }]}>
+                <Text style={styles.axisTickLabel}>0</Text>
+              </View>
+              {ticks.map((tick) => (
                 <View
                   key={`axis-neg-${tick}`}
-                  style={[
-                    styles.axisTick,
-                    styles.axisTickAnchor,
-                    { top: halfHeight + (tick / maxScaleValue) * halfHeight },
-                  ]}
+                  style={[styles.axisLabelRow, { top: halfHeight + (tick / maxValue) * halfHeight }]}
                 >
                   <Text style={styles.axisTickLabel}>
                     {formatCurrency(-tick, currency, {
@@ -314,80 +323,92 @@ export default function NetIncomeDetailsScreen() {
                       minimumFractionDigits: tickFractionDigits,
                     })}
                   </Text>
-                  <View style={styles.axisTickMark(theme)} />
                 </View>
               ))}
-              <View style={[styles.axisTick, styles.axisTickAnchor, { top: halfHeight }]}>
-                <Text style={styles.axisTickLabel}>0</Text>
-                <View style={styles.axisTickMark(theme)} />
-              </View>
             </View>
 
-            <View style={[styles.barArea, { height: chartHeight }]}>
-              <View style={styles.gridLayer(theme)} pointerEvents="none">
-                {[...positiveTicks].map((tick) => (
-                  <View
-                    key={`grid-pos-${tick}`}
-                    style={[
-                      styles.gridLine,
-                      { top: halfHeight - (tick / maxScaleValue) * halfHeight },
-                    ]}
-                  />
-                ))}
-                {[...positiveTicks].map((tick) => (
-                  <View
-                    key={`grid-neg-${tick}`}
-                    style={[
-                      styles.gridLine,
-                      { top: halfHeight + (tick / maxScaleValue) * halfHeight },
-                    ]}
-                  />
-                ))}
-                <View
-                  style={[
-                    styles.gridLine,
-                    styles.zeroGrid(theme),
-                    { top: halfHeight, transform: [{ translateY: -0.5 }] },
-                  ]}
-                />
-              </View>
-
-              <View style={styles.barRow}>
-                {weeklySummaries.map((week) => {
-                  const incomeHeight =
-                    week.income === 0 ? 0 : Math.max(6, (week.income / maxScaleValue) * halfHeight);
-                  const expenseHeight =
-                    week.expense === 0 ? 0 : Math.max(6, (week.expense / maxScaleValue) * halfHeight);
+            <View
+              style={[styles.barArea, { height: chartHeight }]}
+              onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
+            >
+              <Svg width={chartWidth || "100%"} height={chartHeight}>
+                {ticks.map((tick) => {
+                  const y = halfHeight - (tick / maxValue) * halfHeight;
                   return (
-                    <View key={week.label} style={styles.barColumn}>
-                      <View style={[styles.barStack, { height: chartHeight }]}>
-                        <View style={styles.barAbove}>
-                          <View
-                            style={[
-                              styles.bar(theme),
-                              styles.barIncome(theme),
-                              incomeHeight === 0 && styles.barHidden,
-                              { height: incomeHeight },
-                            ]}
-                          />
-                        </View>
-                        <View style={styles.barBelow}>
-                          <View
-                            style={[
-                              styles.bar(theme),
-                              styles.barExpense(theme),
-                              expenseHeight === 0 && styles.barHidden,
-                              { height: expenseHeight },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                      <Text style={styles.barLabel}>{week.label}</Text>
-                    </View>
+                    <SvgLine
+                      key={`grid-pos-${tick}`}
+                      x1={0}
+                      x2={chartWidth}
+                      y1={y}
+                      y2={y}
+                      stroke={`${theme.colors.textMuted}50`}
+                      strokeWidth={1}
+                    />
                   );
                 })}
-              </View>
+                {ticks.map((tick) => {
+                  const y = halfHeight + (tick / maxValue) * halfHeight;
+                  return (
+                    <SvgLine
+                      key={`grid-neg-${tick}`}
+                      x1={0}
+                      x2={chartWidth}
+                      y1={y}
+                      y2={y}
+                      stroke={`${theme.colors.textMuted}50`}
+                      strokeWidth={1}
+                    />
+                  );
+                })}
+                <SvgLine
+                  x1={0}
+                  x2={chartWidth}
+                  y1={halfHeight}
+                  y2={halfHeight}
+                  stroke={theme.colors.border}
+                  strokeWidth={1.2}
+                />
+
+                {weeklySummaries.map((week, index) => {
+                  const slot = chartWidth && weeklySummaries.length ? chartWidth / weeklySummaries.length : 0;
+                  const barGap = 14;
+                  const barWidth = slot ? Math.max(slot - barGap, 18) : 0;
+                  const offset = (slot - barWidth) / 2;
+                  const x = index * slot + Math.max(offset, 0);
+                  const zeroY = halfHeight;
+                  const incomeHeight = maxValue === 0 ? 0 : Math.abs((week.income / maxValue) * halfHeight);
+                  const expenseHeight = maxValue === 0 ? 0 : Math.abs((week.expense / maxValue) * halfHeight);
+
+                  return (
+                    <Fragment key={week.label}>
+                      <Rect
+                        x={x}
+                        y={zeroY - incomeHeight}
+                        width={barWidth}
+                        height={incomeHeight}
+                        fill={`${theme.colors.success}dd`}
+                        rx={8}
+                      />
+                      <Rect
+                        x={x}
+                        y={zeroY}
+                        width={barWidth}
+                        height={expenseHeight}
+                        fill={`${theme.colors.danger}cc`}
+                        rx={8}
+                      />
+                    </Fragment>
+                  );
+                })}
+              </Svg>
             </View>
+          </View>
+          <View style={styles.barLabelsRow}>
+            {weeklySummaries.map((week) => (
+              <Text key={`label-${week.label}`} style={styles.barLabel} numberOfLines={1}>
+                {week.label}
+              </Text>
+            ))}
           </View>
         </View>
 
@@ -571,7 +592,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flexDirection: "row",
       alignItems: "flex-start",
       gap: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
+      paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.sm,
       borderRadius: theme.radii.lg,
       backgroundColor: theme.colors.surfaceElevated,
@@ -584,101 +605,36 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       height: "100%",
       paddingRight: theme.spacing.sm,
     },
-    axisTickAnchor: {
-      transform: [{ translateY: -8 }],
-    },
-    axisTick: {
+    axisLabelRow: {
       position: "absolute",
       left: 0,
       right: 0,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+      transform: [{ translateY: -8 }],
     },
     axisTickLabel: {
       fontSize: 12,
       color: theme.colors.textMuted,
       textAlign: "right",
     },
-    axisTickMark: (theme: ReturnType<typeof useAppTheme>) => ({
-      width: 12,
-      height: 1,
-      marginLeft: theme.spacing.xs,
-      backgroundColor: `${theme.colors.textMuted}70`,
-    }),
-    axisLine: (theme: ReturnType<typeof useAppTheme>) => ({
-      position: "absolute",
-      top: 0,
-      bottom: 0,
-      right: theme.spacing.xs,
-      width: 1,
-      backgroundColor: `${theme.colors.border}aa`,
-    }),
     barArea: {
       flex: 1,
       height: "100%",
       position: "relative",
     },
-    gridLayer: (theme: ReturnType<typeof useAppTheme>) => ({
-      position: "absolute",
-      left: 0,
-      right: 0,
-      top: 0,
-      bottom: 0,
-    }),
-    gridLine: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      height: 1,
-      backgroundColor: `${theme.colors.textMuted}60`,
-      opacity: 0.55,
-      transform: [{ translateY: -0.5 }],
-    },
-    zeroGrid: (theme: ReturnType<typeof useAppTheme>) => ({
-      backgroundColor: theme.colors.border,
-      opacity: 0.65,
-    }),
-    barRow: {
+    barLabelsRow: {
       flexDirection: "row",
-      alignItems: "flex-end",
-      gap: theme.spacing.sm,
-      height: "100%",
-    },
-    barColumn: {
-      flex: 1,
       alignItems: "center",
+      justifyContent: "space-between",
+      paddingLeft: 72 + theme.spacing.md + theme.spacing.sm,
+      paddingRight: theme.spacing.sm,
+      marginTop: theme.spacing.xs,
       gap: theme.spacing.sm,
     },
-    barStack: {
-      flexDirection: "column",
-      justifyContent: "center",
-      width: "100%",
-    },
-    barAbove: {
-      flex: 1,
-      justifyContent: "flex-end",
-    },
-    barBelow: {
-      flex: 1,
-      justifyContent: "flex-start",
-    },
-    bar: (theme: ReturnType<typeof useAppTheme>) => ({
-      borderRadius: theme.radii.md,
-      width: "100%",
-    }),
-    barHidden: {
-      opacity: 0.2,
-    },
-    barIncome: (theme: ReturnType<typeof useAppTheme>) => ({
-      backgroundColor: `${theme.colors.success}dd`,
-    }),
-    barExpense: (theme: ReturnType<typeof useAppTheme>) => ({
-      backgroundColor: `${theme.colors.danger}cc`,
-    }),
     barLabel: {
       fontSize: 12,
       color: theme.colors.textMuted,
+      flex: 1,
+      textAlign: "center",
     },
     listHeader: {
       gap: 4,
