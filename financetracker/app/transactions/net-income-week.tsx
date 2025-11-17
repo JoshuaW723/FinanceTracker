@@ -518,7 +518,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       marginVertical: theme.spacing.sm,
     },
     separator: {
-      height: theme.spacing.lg,
+      height: theme.spacing.sm,
     },
     emptyState: {
       alignItems: "center",

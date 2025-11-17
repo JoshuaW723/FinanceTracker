@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -19,7 +19,6 @@ type WeeklySummary = {
   start: dayjs.Dayjs;
   end: dayjs.Dayjs;
   label: string;
-  dateLabel: string;
   income: number;
   expense: number;
   net: number;
@@ -74,6 +73,7 @@ export default function NetIncomeDetailsScreen() {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { period: periodParam, accountId } = useLocalSearchParams<PeriodParam>();
+  const periodScrollerRef = useRef<ScrollView | null>(null);
 
   const transactions = useFinanceStore((state) => state.transactions);
   const accounts = useFinanceStore((state) => state.accounts);
@@ -94,10 +94,11 @@ export default function NetIncomeDetailsScreen() {
     typeof accountId === "string" && accountId.length ? accountId : null,
   );
 
-  const periodOptions = useMemo(() => buildMonthlyPeriods().slice().reverse(), []);
+  const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
   const resolvedPeriod = useMemo(() => {
     const key = typeof periodParam === "string" ? periodParam : undefined;
-    return periodOptions.find((option) => option.key === key) ?? periodOptions[0];
+    const fallbackIndex = Math.max(periodOptions.length - 1, 0);
+    return periodOptions.find((option) => option.key === key) ?? periodOptions[fallbackIndex];
   }, [periodOptions, periodParam]);
 
   const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>(() => resolvedPeriod.key);
@@ -154,13 +155,11 @@ export default function NetIncomeDetailsScreen() {
           .reduce((acc, transaction) => acc + transaction.amount, 0);
 
         const label = `${range.start.date()}–${range.end.date()}`;
-        const dateLabel = `${range.start.format("MMM D")} • ${range.end.format("ddd")}`;
 
         return {
           start: range.start,
           end: range.end,
           label,
-          dateLabel,
           income,
           expense,
           net: income - expense,
@@ -174,10 +173,6 @@ export default function NetIncomeDetailsScreen() {
     1,
     ...weeklySummaries.map((week) => Math.max(week.income, week.expense)),
   );
-
-  const accountLabel = selectedAccountId
-    ? accounts.find((account) => account.id === selectedAccountId)?.name ?? "Account"
-    : "All accounts";
 
   const handleOpenWeek = (week: WeeklySummary) => {
     router.push({
@@ -212,7 +207,16 @@ export default function NetIncomeDetailsScreen() {
         contentInsetAdjustmentBehavior="automatic"
       >
         <View style={styles.periodScroller}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            onContentSizeChange={(width) => {
+              if (width > 0) {
+                periodScrollerRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
+            ref={periodScrollerRef}
+          >
             {periodOptions.map((option) => {
               const active = option.key === selectedPeriodKey;
               const { start: optionStart, end: optionEnd } = option.range();
@@ -236,17 +240,6 @@ export default function NetIncomeDetailsScreen() {
           </ScrollView>
         </View>
 
-        <View style={styles.metaRow}>
-          <View style={styles.badge(theme)}>
-            <Ionicons name="calendar" size={14} color={theme.colors.text} />
-            <Text style={styles.badgeText}>{start.format("MMMM YYYY")}</Text>
-          </View>
-          <View style={styles.badge(theme)}>
-            <Ionicons name="wallet" size={14} color={theme.colors.text} />
-            <Text style={styles.badgeText}>{accountLabel}</Text>
-          </View>
-        </View>
-
         <View style={styles.card(theme)}>
           <View style={styles.cardHeader}>
             <View>
@@ -264,14 +257,24 @@ export default function NetIncomeDetailsScreen() {
           </View>
 
           <View style={styles.chartArea}>
+            <View style={styles.zeroLine(theme)} />
             {weeklySummaries.map((week) => {
-              const incomeHeight = Math.max(6, (week.income / maxVolume) * 120);
-              const expenseHeight = Math.max(6, (week.expense / maxVolume) * 120);
+              const maxHeight = 140;
+              const incomeHeight = Math.max(4, (week.income / maxVolume) * maxHeight);
+              const expenseHeight = Math.max(4, (week.expense / maxVolume) * maxHeight);
               return (
                 <View key={week.label} style={styles.barColumn}>
                   <View style={styles.barStack}>
-                    <View style={[styles.bar(theme), styles.barIncome(theme), { height: incomeHeight }]} />
-                    <View style={[styles.bar(theme), styles.barExpense(theme), { height: expenseHeight }]} />
+                    <View style={styles.barAbove}>
+                      <View
+                        style={[styles.bar(theme), styles.barIncome(theme), { height: incomeHeight }]}
+                      />
+                    </View>
+                    <View style={styles.barBelow}>
+                      <View
+                        style={[styles.bar(theme), styles.barExpense(theme), { height: expenseHeight }]}
+                      />
+                    </View>
                   </View>
                   <Text style={styles.barLabel}>{week.label}</Text>
                 </View>
@@ -295,7 +298,6 @@ export default function NetIncomeDetailsScreen() {
           >
             <View style={styles.weekInfo}>
               <Text style={styles.weekLabel}>{week.label}</Text>
-              <Text style={styles.weekDate}>{week.dateLabel}</Text>
             </View>
             <View style={styles.weekAmounts}>
               <Text style={styles.weekIncome}>
@@ -454,13 +456,24 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     chartArea: {
       flexDirection: "row",
-      alignItems: "flex-end",
+      alignItems: "stretch",
       gap: theme.spacing.md,
-      paddingVertical: theme.spacing.md,
+      paddingVertical: theme.spacing.lg,
       borderRadius: theme.radii.lg,
       backgroundColor: theme.colors.surfaceElevated,
       paddingHorizontal: theme.spacing.lg,
+      position: "relative",
+      overflow: "hidden",
+      minHeight: 280,
     },
+    zeroLine: (theme: ReturnType<typeof useAppTheme>) => ({
+      position: "absolute",
+      top: "50%",
+      left: theme.spacing.lg,
+      right: theme.spacing.lg,
+      height: 1,
+      backgroundColor: `${theme.colors.border}aa`,
+    }),
     barColumn: {
       flex: 1,
       alignItems: "center",
@@ -468,14 +481,22 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     barStack: {
       flexDirection: "column",
-      justifyContent: "flex-end",
+      justifyContent: "center",
       width: "100%",
-      gap: 6,
+      height: 240,
+      gap: 8,
+    },
+    barAbove: {
+      flex: 1,
+      justifyContent: "flex-end",
+    },
+    barBelow: {
+      flex: 1,
+      justifyContent: "flex-start",
     },
     bar: (theme: ReturnType<typeof useAppTheme>) => ({
-      borderRadius: theme.radii.sm,
+      borderRadius: theme.radii.md,
       width: "100%",
-      minHeight: 10,
     }),
     barIncome: (theme: ReturnType<typeof useAppTheme>) => ({
       backgroundColor: `${theme.colors.success}dd`,
@@ -503,11 +524,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingVertical: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.lg,
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radii.lg,
-      marginTop: theme.spacing.sm,
+      borderRadius: theme.radii.xl,
+      marginTop: theme.spacing.xs,
       borderWidth: 1,
       borderColor: `${theme.colors.border}80`,
       shadowColor: theme.colors.background,
@@ -539,9 +560,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontWeight: "700",
     },
     netPill: (positive: boolean, theme: ReturnType<typeof useAppTheme>) => ({
-      paddingHorizontal: theme.spacing.sm,
-      paddingVertical: 6,
-      borderRadius: theme.radii.full,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 8,
+      borderRadius: theme.radii.lg,
       backgroundColor: positive ? `${theme.colors.success}22` : `${theme.colors.danger}22`,
     }),
     netPillText: (positive: boolean, theme: ReturnType<typeof useAppTheme>) => ({
