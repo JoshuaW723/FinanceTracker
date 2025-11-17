@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -123,18 +123,29 @@ export default function TransactionsReportModal() {
   );
   const visibleAccountIds = useMemo(() => visibleAccounts.map((account) => account.id), [visibleAccounts]);
 
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() =>
+    typeof accountId === "string" && accountId.length ? accountId : null,
+  );
   const periodOptions = useMemo(() => buildMonthlyPeriods(), []);
   const resolvedPeriod = useMemo(() => {
     const key = typeof periodParam === "string" ? periodParam : undefined;
     return periodOptions.find((option) => option.key === key) ?? periodOptions[periodOptions.length - 1];
   }, [periodOptions, periodParam]);
 
-  const { start, end } = useMemo(() => resolvedPeriod.range(), [resolvedPeriod]);
-  const selectedAccountId = typeof accountId === "string" && accountId.length ? accountId : null;
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>(() => resolvedPeriod.key);
+  const selectedPeriod = useMemo(
+    () => periodOptions.find((option) => option.key === selectedPeriodKey) ?? resolvedPeriod,
+    [periodOptions, resolvedPeriod, selectedPeriodKey],
+  );
+
+  const { start, end } = useMemo(() => selectedPeriod.range(), [selectedPeriod]);
   const accountName = selectedAccountId
     ? accounts.find((account) => account.id === selectedAccountId)?.name ?? "Selected account"
     : "All accounts";
   const rangeLabel = `${start.format("MMM D")} – ${end.format("MMM D, YYYY")}`;
+
+  const [periodPickerVisible, setPeriodPickerVisible] = useState(false);
+  const [accountPickerVisible, setAccountPickerVisible] = useState(false);
 
   const report = useMemo(() => {
     const allowedAccountIds = selectedAccountId ? null : new Set(visibleAccountIds);
@@ -246,15 +257,42 @@ export default function TransactionsReportModal() {
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Period</Text>
-            <Text style={styles.metaValue}>{resolvedPeriod.label}</Text>
-            <Text style={styles.metaSubValue}>{rangeLabel}</Text>
+        <View style={styles.selectorCard}>
+          <View style={styles.selectorHeader}>
+            <Text style={styles.selectorTitle}>Report scope</Text>
+            <Text style={styles.selectorSubtitle}>Adjust the period and account to explore.</Text>
           </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Account</Text>
-            <Text style={styles.metaValue}>{accountLabel}</Text>
+          <View style={styles.selectorRow}>
+            <Pressable
+              style={styles.selectorField}
+              onPress={() => setPeriodPickerVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Choose report period"
+            >
+              <Text style={styles.selectorLabel}>Period</Text>
+              <View style={styles.selectorValueRow}>
+                <Text style={styles.selectorValue}>{selectedPeriod.label}</Text>
+                <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+              </View>
+              <Text style={styles.selectorHint}>{rangeLabel}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.selectorField}
+              onPress={() => setAccountPickerVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Choose account"
+            >
+              <Text style={styles.selectorLabel}>Account</Text>
+              <View style={styles.selectorValueRow}>
+                <Text style={styles.selectorValue} numberOfLines={1}>
+                  {accountLabel}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+              </View>
+              <Text style={styles.selectorHint} numberOfLines={1}>
+                {selectedAccountId ? "Filtered to one account" : "Using all visible accounts"}
+              </Text>
+            </Pressable>
           </View>
         </View>
 
@@ -268,7 +306,6 @@ export default function TransactionsReportModal() {
             <Ionicons name="arrow-forward" size={18} color={theme.colors.textMuted} />
             <Text style={styles.balanceValue}>{formatCurrency(report.closingBalance, currency)}</Text>
           </View>
-          <Text style={styles.balanceRange}>Net change reflects all reportable transactions for this period.</Text>
         </View>
 
         <View style={styles.netCard}>
@@ -314,6 +351,105 @@ export default function TransactionsReportModal() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={periodPickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPeriodPickerVisible(false)}
+      >
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select period</Text>
+            <Pressable onPress={() => setPeriodPickerVisible(false)} style={styles.modalClose}>
+              <Ionicons name="close" size={22} color={theme.colors.text} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            {periodOptions.map((option) => {
+              const active = option.key === selectedPeriod.key;
+              const { start: optionStart, end: optionEnd } = option.range();
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[styles.modalRow, active && styles.modalRowActive(theme)]}
+                  onPress={() => {
+                    setSelectedPeriodKey(option.key);
+                    setPeriodPickerVisible(false);
+                  }}
+                >
+                  <View style={styles.modalRowMeta}>
+                    <Text style={[styles.modalRowTitle, { color: theme.colors.text }]}>{option.label}</Text>
+                    <Text style={[styles.modalRowSubtitle, { color: theme.colors.textMuted }]}>
+                      {`${optionStart.format("MMM D")} – ${optionEnd.format("MMM D, YYYY")}`}
+                    </Text>
+                  </View>
+                  {active && <Ionicons name="checkmark" size={18} color={theme.colors.primary} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={accountPickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setAccountPickerVisible(false)}
+      >
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select account</Text>
+            <Pressable onPress={() => setAccountPickerVisible(false)} style={styles.modalClose}>
+              <Ionicons name="close" size={22} color={theme.colors.text} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <Pressable
+              style={[styles.modalRow, !selectedAccountId && styles.modalRowActive(theme)]}
+              onPress={() => {
+                setSelectedAccountId(null);
+                setAccountPickerVisible(false);
+              }}
+            >
+              <View style={styles.modalRowMeta}>
+                <Text style={[styles.modalRowTitle, { color: theme.colors.text }]}>All accounts</Text>
+                <Text style={[styles.modalRowSubtitle, { color: theme.colors.textMuted }]}>Use every visible account</Text>
+              </View>
+              {!selectedAccountId && <Ionicons name="checkmark" size={18} color={theme.colors.primary} />}
+            </Pressable>
+
+            {visibleAccounts.map((account) => {
+              const active = account.id === selectedAccountId;
+              return (
+                <Pressable
+                  key={account.id}
+                  style={[styles.modalRow, active && styles.modalRowActive(theme)]}
+                  onPress={() => {
+                    setSelectedAccountId(account.id);
+                    setAccountPickerVisible(false);
+                  }}
+                >
+                  <View style={styles.modalRowMeta}>
+                    <Text style={[styles.modalRowTitle, { color: theme.colors.text }]}>{account.name}</Text>
+                    <Text style={[styles.modalRowSubtitle, { color: theme.colors.textMuted }]}>
+                      {`${account.type.charAt(0).toUpperCase()}${account.type.slice(1)} • ${formatCurrency(
+                        account.balance,
+                        account.currency || currency,
+                        {
+                          maximumFractionDigits: Number.isInteger(account.balance) ? 0 : 2,
+                        },
+                      )}`}
+                    </Text>
+                  </View>
+                  {active && <Ionicons name="checkmark" size={18} color={theme.colors.primary} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -433,30 +569,58 @@ const createStyles = (theme: Theme) =>
       paddingBottom: theme.spacing.xl + 16,
       gap: theme.spacing.lg,
     },
-    metaRow: {
+    selectorCard: {
       ...theme.components.card,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: theme.spacing.xl,
       borderWidth: 1,
       borderColor: `${theme.colors.primary}12`,
+      gap: theme.spacing.md,
     },
-    metaItem: {
-      flex: 1,
+    selectorHeader: {
       gap: 4,
     },
-    metaLabel: {
-      fontSize: 12,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-      color: theme.colors.textMuted,
-    },
-    metaValue: {
-      fontSize: 18,
-      fontWeight: "600",
+    selectorTitle: {
+      fontSize: 16,
+      fontWeight: "700",
       color: theme.colors.text,
     },
-    metaSubValue: {
+    selectorSubtitle: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+    },
+    selectorRow: {
+      flexDirection: "row",
+      gap: theme.spacing.md,
+      flexWrap: "wrap",
+    },
+    selectorField: {
+      flex: 1,
+      minWidth: 160,
+      padding: theme.spacing.md,
+      borderRadius: theme.radii.md,
+      backgroundColor: theme.colors.surfaceElevated,
+      gap: 6,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}08`,
+    },
+    selectorLabel: {
+      fontSize: 12,
+      color: theme.colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    selectorValueRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.sm,
+    },
+    selectorValue: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: theme.colors.text,
+      flex: 1,
+    },
+    selectorHint: {
       fontSize: 13,
       color: theme.colors.textMuted,
     },
@@ -488,11 +652,6 @@ const createStyles = (theme: Theme) =>
       fontSize: 20,
       fontWeight: "700",
       color: theme.colors.text,
-    },
-    balanceRange: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-      lineHeight: 18,
     },
     netCard: {
       ...theme.components.card,
@@ -586,4 +745,55 @@ const createStyles = (theme: Theme) =>
     legend: {
       alignSelf: "stretch",
     },
+    modalContainer: {
+      flex: 1,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.lg,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    modalClose: {
+      padding: 8,
+      borderRadius: theme.radii.md,
+      backgroundColor: theme.colors.surface,
+    },
+    modalContent: {
+      paddingHorizontal: theme.spacing.xl,
+      paddingBottom: theme.spacing.xl,
+      gap: theme.spacing.sm,
+    },
+    modalRow: {
+      padding: theme.spacing.md,
+      borderRadius: theme.radii.md,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}08`,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: theme.colors.surfaceElevated,
+      gap: theme.spacing.sm,
+    },
+    modalRowMeta: {
+      flex: 1,
+      gap: 2,
+    },
+    modalRowTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    modalRowSubtitle: {
+      fontSize: 13,
+    },
+    modalRowActive: (currentTheme: Theme) => ({
+      borderColor: currentTheme.colors.primary,
+      backgroundColor: `${currentTheme.colors.primary}10`,
+    }),
   });
