@@ -199,11 +199,21 @@ export default function NetIncomeDetailsScreen() {
       return { ticks: [1, 2, 3], maxValue: 3 };
     }
 
-    const step = niceStep(maxAbs / 3);
-    const limit = step * 3;
+    let step = niceStep(maxAbs / 3);
+    let tickCount = Math.max(3, Math.ceil(maxAbs / step));
+    let limit = step * tickCount;
+    const headroomLimit = 1.25;
+
+    while (limit / maxAbs > headroomLimit && step > 0) {
+      step = step / 2;
+      tickCount = Math.max(3, Math.ceil(maxAbs / step));
+      limit = step * tickCount;
+    }
+
+    const ticks = Array.from({ length: tickCount }, (_, index) => step * (index + 1));
 
     return {
-      ticks: [step, step * 2, step * 3],
+      ticks,
       maxValue: limit,
     };
   }, [weeklySummaries]);
@@ -612,7 +622,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       transform: [{ translateY: -8 }],
     },
     axisTickLabel: {
-      fontSize: 12,
+      fontSize: 11,
       color: theme.colors.textMuted,
       textAlign: "right",
     },
