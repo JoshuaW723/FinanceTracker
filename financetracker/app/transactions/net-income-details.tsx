@@ -169,10 +169,26 @@ export default function NetIncomeDetailsScreen() {
   );
 
   const totalNet = weeklySummaries.reduce((acc, week) => acc + week.net, 0);
-  const maxVolume = Math.max(
-    1,
-    ...weeklySummaries.map((week) => Math.max(week.income, week.expense)),
-  );
+
+  const { positiveTicks, maxScaleValue } = useMemo(() => {
+    const maxMagnitude = Math.max(
+      1,
+      ...weeklySummaries.map((week) => Math.max(week.income, week.expense)),
+    );
+
+    const rawStep = maxMagnitude / 3;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const niceStep = Math.ceil(rawStep / magnitude) * magnitude;
+
+    return {
+      positiveTicks: [niceStep, niceStep * 2, niceStep * 3],
+      maxScaleValue: niceStep * 3,
+    };
+  }, [weeklySummaries]);
+
+  const chartHeight = 220;
+  const halfHeight = chartHeight / 2;
+  const tickFractionDigits = maxScaleValue < 1 ? 2 : maxScaleValue < 10 ? 1 : 0;
 
   const handleOpenWeek = (week: WeeklySummary) => {
     router.push({
@@ -240,7 +256,7 @@ export default function NetIncomeDetailsScreen() {
           </ScrollView>
         </View>
 
-        <View style={styles.card(theme)}>
+        <View style={styles.chartCard(theme)}>
           <View style={styles.cardHeader}>
             <View>
               <Text style={styles.overline}>Total</Text>
@@ -256,30 +272,80 @@ export default function NetIncomeDetailsScreen() {
             </View>
           </View>
 
-          <View style={styles.chartArea}>
-            <View style={styles.zeroLine(theme)} />
-            {weeklySummaries.map((week) => {
-              const maxHeight = 140;
-              const incomeHeight = Math.max(4, (week.income / maxVolume) * maxHeight);
-              const expenseHeight = Math.max(4, (week.expense / maxVolume) * maxHeight);
-              return (
-                <View key={week.label} style={styles.barColumn}>
-                  <View style={styles.barStack}>
-                    <View style={styles.barAbove}>
-                      <View
-                        style={[styles.bar(theme), styles.barIncome(theme), { height: incomeHeight }]}
-                      />
-                    </View>
-                    <View style={styles.barBelow}>
-                      <View
-                        style={[styles.bar(theme), styles.barExpense(theme), { height: expenseHeight }]}
-                      />
-                    </View>
-                  </View>
-                  <Text style={styles.barLabel}>{week.label}</Text>
+          <View style={[styles.chartArea, { height: chartHeight }]}> 
+            <View style={styles.axisColumn}>
+              {[...positiveTicks].reverse().map((tick) => (
+                <View
+                  key={`axis-pos-${tick}`}
+                  style={[styles.axisTick, { top: halfHeight - (tick / maxScaleValue) * halfHeight }]}
+                >
+                  <Text style={styles.axisTickLabel}>
+                    {formatCurrency(tick, currency, {
+                      maximumFractionDigits: tickFractionDigits,
+                      minimumFractionDigits: tickFractionDigits,
+                    })}
+                  </Text>
                 </View>
-              );
-            })}
+              ))}
+              {[...positiveTicks].map((tick) => (
+                <View
+                  key={`axis-neg-${tick}`}
+                  style={[styles.axisTick, { top: halfHeight + (tick / maxScaleValue) * halfHeight }]}
+                >
+                  <Text style={styles.axisTickLabel}>
+                    {formatCurrency(-tick, currency, {
+                      maximumFractionDigits: tickFractionDigits,
+                      minimumFractionDigits: tickFractionDigits,
+                    })}
+                  </Text>
+                </View>
+              ))}
+              <View style={[styles.axisTick, { top: halfHeight }]}>
+                <Text style={styles.axisTickLabel}>0</Text>
+              </View>
+            </View>
+
+            <View style={styles.barArea}>
+              <View style={styles.gridLayer(theme)} pointerEvents="none">
+                {[...positiveTicks].map((tick) => (
+                  <View
+                    key={`grid-pos-${tick}`}
+                    style={[styles.gridLine, { top: halfHeight - (tick / maxScaleValue) * halfHeight }]}
+                  />
+                ))}
+                {[...positiveTicks].map((tick) => (
+                  <View
+                    key={`grid-neg-${tick}`}
+                    style={[styles.gridLine, { top: halfHeight + (tick / maxScaleValue) * halfHeight }]}
+                  />
+                ))}
+                <View style={[styles.gridLine, styles.zeroGrid(theme), { top: halfHeight }]} />
+              </View>
+
+              <View style={styles.barRow}>
+                {weeklySummaries.map((week) => {
+                  const incomeHeight = Math.max(4, (week.income / maxScaleValue) * halfHeight);
+                  const expenseHeight = Math.max(4, (week.expense / maxScaleValue) * halfHeight);
+                  return (
+                    <View key={week.label} style={styles.barColumn}>
+                      <View style={[styles.barStack, { height: chartHeight }]}>
+                        <View style={styles.barAbove}>
+                          <View
+                            style={[styles.bar(theme), styles.barIncome(theme), { height: incomeHeight }]}
+                          />
+                        </View>
+                        <View style={styles.barBelow}>
+                          <View
+                            style={[styles.bar(theme), styles.barExpense(theme), { height: expenseHeight }]}
+                          />
+                        </View>
+                      </View>
+                      <Text style={styles.barLabel}>{week.label}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
           </View>
         </View>
 
@@ -296,20 +362,25 @@ export default function NetIncomeDetailsScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Open week ${week.label}`}
           >
-            <View style={styles.weekInfo}>
-              <Text style={styles.weekLabel}>{week.label}</Text>
-            </View>
-            <View style={styles.weekAmounts}>
-              <Text style={styles.weekIncome}>
-                {formatCurrency(week.income, currency)}
-              </Text>
-              <Text style={styles.weekExpense}>
-                {formatCurrency(week.expense, currency)}
-              </Text>
+            <View style={styles.weekTopRow}>
+              <View style={styles.weekInfo}>
+                <Text style={styles.weekLabel}>{week.label}</Text>
+              </View>
               <View style={styles.netPill(week.net >= 0, theme)}>
                 <Text style={styles.netPillText(week.net >= 0, theme)}>
                   {formatCurrency(week.net, currency, { signDisplay: "always" })}
                 </Text>
+              </View>
+            </View>
+
+            <View style={styles.weekAmountsRow}>
+              <View style={styles.weekStat(theme.colors.success, `${theme.colors.success}15`)}>
+                <Text style={styles.weekStatLabel}>Income</Text>
+                <Text style={styles.weekIncome}>{formatCurrency(week.income, currency)}</Text>
+              </View>
+              <View style={styles.weekStat(theme.colors.danger, `${theme.colors.danger}10`)}>
+                <Text style={styles.weekStatLabel}>Expense</Text>
+                <Text style={styles.weekExpense}>{formatCurrency(week.expense, currency)}</Text>
               </View>
             </View>
           </Pressable>
@@ -417,9 +488,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.text,
       fontWeight: "600",
     },
-    card: (theme: ReturnType<typeof useAppTheme>) => ({
+    chartCard: (theme: ReturnType<typeof useAppTheme>) => ({
       ...theme.components.card,
-      padding: theme.spacing.lg,
+      padding: theme.spacing.md,
       gap: theme.spacing.md,
     }),
     cardHeader: {
@@ -456,35 +527,67 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     chartArea: {
       flexDirection: "row",
-      alignItems: "stretch",
-      gap: theme.spacing.md,
-      paddingVertical: theme.spacing.lg,
+      alignItems: "flex-start",
+      gap: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.md,
       borderRadius: theme.radii.lg,
       backgroundColor: theme.colors.surfaceElevated,
-      paddingHorizontal: theme.spacing.lg,
       position: "relative",
       overflow: "hidden",
-      minHeight: 280,
     },
-    zeroLine: (theme: ReturnType<typeof useAppTheme>) => ({
+    axisColumn: {
+      width: 72,
+      position: "relative",
+      height: "100%",
+    },
+    axisTick: {
       position: "absolute",
-      top: "50%",
-      left: theme.spacing.lg,
-      right: theme.spacing.lg,
-      height: 1,
-      backgroundColor: `${theme.colors.border}aa`,
+      left: 0,
+    },
+    axisTickLabel: {
+      fontSize: 12,
+      color: theme.colors.textMuted,
+    },
+    barArea: {
+      flex: 1,
+      height: "100%",
+      position: "relative",
+    },
+    gridLayer: (theme: ReturnType<typeof useAppTheme>) => ({
+      position: "absolute",
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
     }),
+    gridLine: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      height: 1,
+      backgroundColor: theme.colors.border,
+      opacity: 0.35,
+    },
+    zeroGrid: (theme: ReturnType<typeof useAppTheme>) => ({
+      backgroundColor: theme.colors.border,
+      opacity: 0.65,
+    }),
+    barRow: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: theme.spacing.sm,
+      height: "100%",
+    },
     barColumn: {
       flex: 1,
       alignItems: "center",
-      gap: theme.spacing.xs,
+      gap: theme.spacing.sm,
     },
     barStack: {
       flexDirection: "column",
       justifyContent: "center",
       width: "100%",
-      height: 240,
-      gap: 8,
     },
     barAbove: {
       flex: 1,
@@ -521,13 +624,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.textMuted,
     },
     weekRow: (theme: ReturnType<typeof useAppTheme>) => ({
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+      gap: theme.spacing.sm,
       paddingVertical: theme.spacing.lg,
       paddingHorizontal: theme.spacing.lg,
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radii.xl,
+      borderRadius: theme.radii.xl * 1.25,
       marginTop: theme.spacing.xs,
       borderWidth: 1,
       borderColor: `${theme.colors.border}80`,
@@ -536,6 +637,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       shadowOffset: { width: 0, height: 6 },
       shadowRadius: 8,
     }),
+    weekTopRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
     weekInfo: {
       gap: 2,
     },
@@ -547,9 +653,24 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     weekDate: {
       color: theme.colors.textMuted,
     },
-    weekAmounts: {
-      alignItems: "flex-end",
+    weekAmountsRow: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    weekStat: (color: string, background: string) => ({
+      flex: 1,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radii.lg,
+      backgroundColor: background,
+      borderWidth: 1,
+      borderColor: `${color}40`,
       gap: 4,
+    }),
+    weekStatLabel: {
+      color: theme.colors.textMuted,
+      fontWeight: "600",
+      fontSize: 12,
     },
     weekIncome: {
       color: theme.colors.success,
@@ -562,7 +683,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     netPill: (positive: boolean, theme: ReturnType<typeof useAppTheme>) => ({
       paddingHorizontal: theme.spacing.md,
       paddingVertical: 8,
-      borderRadius: theme.radii.lg,
+      borderRadius: theme.radii.xl,
       backgroundColor: positive ? `${theme.colors.success}22` : `${theme.colors.danger}22`,
     }),
     netPillText: (positive: boolean, theme: ReturnType<typeof useAppTheme>) => ({
