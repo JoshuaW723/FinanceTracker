@@ -38,6 +38,14 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen
+          name="transactions/category-details"
+          options={{
+            presentation: "modal",
+            headerShown: false,
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
           name="transactions/net-income-week"
           options={{
             presentation: "modal",

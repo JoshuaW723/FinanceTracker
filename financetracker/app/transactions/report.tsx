@@ -161,6 +161,19 @@ export default function TransactionsReportModal() {
     router.push({ pathname: "/transactions/net-income-details", params });
   }, [router, selectedAccountId, selectedPeriod.key]);
 
+  const handleOpenCategoryDetails = useCallback(
+    (type: "income" | "expense") => {
+      const params: Record<string, string> = { period: selectedPeriod.key, type };
+
+      if (selectedAccountId) {
+        params.accountId = selectedAccountId;
+      }
+
+      router.push({ pathname: "/transactions/category-details", params });
+    },
+    [router, selectedAccountId, selectedPeriod.key],
+  );
+
   const report = useMemo(() => {
     const allowedAccountIds = selectedAccountId ? null : new Set(visibleAccountIds);
     const scopedTransactions = filterTransactionsByAccount(transactions, selectedAccountId).filter((transaction) => {
@@ -359,16 +372,26 @@ export default function TransactionsReportModal() {
             <Text style={styles.categorySubtitle}>Breakdown of income and spend</Text>
           </View>
           <View style={styles.categoryGrid}>
-            <View style={styles.categoryColumn}>
+            <Pressable
+              style={({ pressed }) => [styles.categoryColumn, pressed && styles.categoryColumnPressed]}
+              onPress={() => handleOpenCategoryDetails("income")}
+              accessibilityRole="button"
+              accessibilityLabel="View income category details"
+            >
               <Text style={styles.categoryColumnLabel}>Income</Text>
               <PieChart data={report.incomeSlices} theme={theme} size={120} />
               <View style={styles.legend}>{renderLegend(report.incomeSlices, currency, theme)}</View>
-            </View>
-            <View style={styles.categoryColumn}>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.categoryColumn, pressed && styles.categoryColumnPressed]}
+              onPress={() => handleOpenCategoryDetails("expense")}
+              accessibilityRole="button"
+              accessibilityLabel="View expense category details"
+            >
               <Text style={styles.categoryColumnLabel}>Expense</Text>
               <PieChart data={report.expenseSlices} theme={theme} size={120} />
               <View style={styles.legend}>{renderLegend(report.expenseSlices, currency, theme)}</View>
-            </View>
+            </Pressable>
           </View>
         </View>
       </ScrollView>
@@ -764,6 +787,10 @@ const createStyles = (theme: Theme) =>
       padding: theme.spacing.md,
       borderRadius: theme.radii.lg,
       backgroundColor: theme.colors.surfaceElevated,
+    },
+    categoryColumnPressed: {
+      opacity: 0.94,
+      transform: [{ scale: 0.99 }],
     },
     categoryColumnLabel: {
       fontSize: 14,
