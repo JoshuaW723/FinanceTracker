@@ -53,15 +53,17 @@ const formatCurrency = (
 
 const buildWeeksForMonth = (start: dayjs.Dayjs, end: dayjs.Dayjs) => {
   const weeks: { start: dayjs.Dayjs; end: dayjs.Dayjs }[] = [];
-  let cursor = start.startOf("week").add(1, "day");
+  let cursor = start.startOf("isoWeek");
 
   while (cursor.isBefore(end) || cursor.isSame(end, "day")) {
-    const weekStart = cursor;
-    const weekEnd = cursor.add(6, "day");
+    const weekStart = cursor.startOf("isoWeek");
+    const weekEnd = cursor.endOf("isoWeek");
+
     weeks.push({
-      start: weekStart.isBefore(start) ? start : weekStart,
-      end: weekEnd.isAfter(end) ? end : weekEnd,
+      start: weekStart.isBefore(start) ? start.startOf("day") : weekStart.startOf("day"),
+      end: weekEnd.isAfter(end) ? end.endOf("day") : weekEnd.endOf("day"),
     });
+
     cursor = cursor.add(1, "week");
   }
 
@@ -172,9 +174,13 @@ export default function NetIncomeDetailsScreen() {
 
   const { positiveTicks, maxScaleValue } = useMemo(() => {
     const maxMagnitude = Math.max(
-      1,
+      0,
       ...weeklySummaries.map((week) => Math.max(week.income, week.expense)),
     );
+
+    if (maxMagnitude === 0) {
+      return { positiveTicks: [1, 2, 3], maxScaleValue: 3 };
+    }
 
     const rawStep = maxMagnitude / 3;
     const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
@@ -186,7 +192,7 @@ export default function NetIncomeDetailsScreen() {
     };
   }, [weeklySummaries]);
 
-  const chartHeight = 220;
+  const chartHeight = 190;
   const halfHeight = chartHeight / 2;
   const tickFractionDigits = maxScaleValue < 1 ? 2 : maxScaleValue < 10 ? 1 : 0;
 
@@ -309,10 +315,10 @@ export default function NetIncomeDetailsScreen() {
               </View>
             </View>
 
-            <View style={styles.barArea}>
-              <View style={styles.gridLayer(theme)} pointerEvents="none">
-                {[...positiveTicks].map((tick) => (
-                  <View
+              <View style={styles.barArea}>
+                <View style={styles.gridLayer(theme)} pointerEvents="none">
+                  {[...positiveTicks].map((tick) => (
+                    <View
                     key={`grid-pos-${tick}`}
                     style={[styles.gridLine, { top: halfHeight - (tick / maxScaleValue) * halfHeight }]}
                   />
@@ -328,19 +334,33 @@ export default function NetIncomeDetailsScreen() {
 
               <View style={styles.barRow}>
                 {weeklySummaries.map((week) => {
-                  const incomeHeight = Math.max(4, (week.income / maxScaleValue) * halfHeight);
-                  const expenseHeight = Math.max(4, (week.expense / maxScaleValue) * halfHeight);
+                  const incomeHeight = week.income === 0
+                    ? 0
+                    : Math.max(6, (week.income / maxScaleValue) * halfHeight);
+                  const expenseHeight = week.expense === 0
+                    ? 0
+                    : Math.max(6, (week.expense / maxScaleValue) * halfHeight);
                   return (
                     <View key={week.label} style={styles.barColumn}>
                       <View style={[styles.barStack, { height: chartHeight }]}>
                         <View style={styles.barAbove}>
                           <View
-                            style={[styles.bar(theme), styles.barIncome(theme), { height: incomeHeight }]}
+                            style={[
+                              styles.bar(theme),
+                              styles.barIncome(theme),
+                              incomeHeight === 0 && styles.barHidden,
+                              { height: incomeHeight },
+                            ]}
                           />
                         </View>
                         <View style={styles.barBelow}>
                           <View
-                            style={[styles.bar(theme), styles.barExpense(theme), { height: expenseHeight }]}
+                            style={[
+                              styles.bar(theme),
+                              styles.barExpense(theme),
+                              expenseHeight === 0 && styles.barHidden,
+                              { height: expenseHeight },
+                            ]}
                           />
                         </View>
                       </View>
@@ -625,6 +645,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       borderRadius: theme.radii.md,
       width: "100%",
     }),
+    barHidden: {
+      opacity: 0.2,
+    },
     barIncome: (theme: ReturnType<typeof useAppTheme>) => ({
       backgroundColor: `${theme.colors.success}dd`,
     }),

@@ -55,8 +55,8 @@ export default function NetIncomeWeekScreen() {
   const accounts = useFinanceStore((state) => state.accounts);
   const currency = useFinanceStore((state) => state.profile.currency) || "USD";
 
-  const start = useMemo(() => dayjs(startParam ?? undefined), [startParam]);
-  const end = useMemo(() => dayjs(endParam ?? undefined), [endParam]);
+  const start = useMemo(() => dayjs(startParam ?? undefined).startOf("day"), [startParam]);
+  const end = useMemo(() => dayjs(endParam ?? undefined).endOf("day"), [endParam]);
 
   const selectedAccountId = typeof accountId === "string" && accountId.length ? accountId : null;
 
@@ -437,16 +437,17 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     dayCard: {
       backgroundColor: theme.colors.surface,
       borderRadius: theme.radii.lg,
-      paddingVertical: theme.spacing.md,
-      paddingHorizontal: theme.spacing.md,
+      overflow: "hidden",
       borderWidth: 1,
-      borderColor: `${theme.colors.border}80`,
+      borderColor: theme.colors.border,
     },
     transactionRow: {
       flexDirection: "row",
       justifyContent: "space-between",
       gap: theme.spacing.md,
       alignItems: "center",
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.md,
     },
     transactionLeft: {
       flexDirection: "row",
@@ -455,45 +456,46 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       alignItems: "center",
     },
     categoryIcon: (variant: string) => ({
-      width: 44,
-      height: 44,
-      borderRadius: 12,
+      width: 36,
+      height: 36,
+      borderRadius: 10,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor:
         variant === "income"
-          ? `${theme.colors.success}1A`
+          ? `${theme.colors.success}20`
           : variant === "expense"
-            ? `${theme.colors.danger}1A`
-            : `${theme.colors.primary}20`,
+            ? `${theme.colors.danger}20`
+            : `${theme.colors.border}55`,
     }),
     categoryInitial: {
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: "700",
       color: theme.colors.text,
     },
     transactionMeta: {
       flex: 1,
-      gap: 2,
+      gap: 4,
     },
     transactionCategory: {
-      fontSize: 15,
-      fontWeight: "700",
+      fontSize: 14,
+      fontWeight: "600",
       color: theme.colors.text,
     },
     transactionNote: {
       color: theme.colors.textMuted,
+      fontSize: 12,
     },
     transferMeta: {
       color: theme.colors.textMuted,
-      fontStyle: "italic",
+      fontSize: 11,
     },
     transactionRight: {
       alignItems: "flex-end",
       gap: 6,
     },
     transactionAmount: (variant: string) => ({
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: "700",
       color:
         variant === "income"
@@ -514,8 +516,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     },
     transactionDivider: {
       height: 1,
-      backgroundColor: `${theme.colors.border}80`,
-      marginVertical: theme.spacing.sm,
+      backgroundColor: theme.colors.border,
+      marginHorizontal: theme.spacing.md,
     },
     separator: {
       height: theme.spacing.sm,
