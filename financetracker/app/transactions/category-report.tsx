@@ -196,7 +196,7 @@ export default function CategoryReportScreen() {
   });
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [categorySelectorLayout, setCategorySelectorLayout] = useState<
-    { x: number; y: number; width: number; height: number } | null
+    { width: number; height: number } | null
   >(null);
 
   useEffect(() => {
@@ -378,13 +378,18 @@ export default function CategoryReportScreen() {
               {formatCurrency(selectedCategoryTotal, currency)}
             </Text>
 
-            <View style={styles.selectorRow}>
+            <View style={styles.selectorContainer}>
               <Pressable
                 onPress={() => setIsCategoryMenuOpen((prev) => !prev)}
                 style={styles.compactCategorySelector(theme)}
                 accessibilityRole="button"
                 accessibilityLabel="Choose category"
-                onLayout={(event) => setCategorySelectorLayout(event.nativeEvent.layout)}
+                onLayout={(event) =>
+                  setCategorySelectorLayout({
+                    width: event.nativeEvent.layout.width,
+                    height: event.nativeEvent.layout.height,
+                  })
+                }
               >
                 <View style={styles.dropdownRow}>
                   <Text style={styles.categoryName} numberOfLines={1}>
@@ -398,58 +403,58 @@ export default function CategoryReportScreen() {
                 </View>
               </Pressable>
 
-              <View style={styles.pill(categoryType === "income")}> 
-                <Text style={styles.pillLabel(categoryType === "income")}>
-                  {categoryType === "income" ? "Income" : "Expense"}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {isCategoryMenuOpen && categorySelectorLayout && (
-            <View
-              style={[
-                styles.dropdownMenu(theme),
-                {
-                  top: categorySelectorLayout.y + categorySelectorLayout.height + theme.spacing.xs,
-                  left: categorySelectorLayout.x,
-                  width: categorySelectorLayout.width,
-                },
-              ]}
-            >
-              {!categoryOptions.length ? (
-                <Text style={styles.emptyState}>No category activity in this period.</Text>
-              ) : (
-                categoryOptions.map((option) => {
-                  const active = option.label === selectedCategory;
-                  return (
-                    <Pressable
-                      key={option.label}
-                      onPress={() => {
-                        setSelectedCategory(option.label);
-                        setIsCategoryMenuOpen(false);
-                      }}
-                      style={[
-                        styles.dropdownOption(theme),
-                        active && styles.dropdownOptionActive(option.color, theme),
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Show ${option.label}`}
+              {isCategoryMenuOpen && categorySelectorLayout && (
+                <View
+                  style={[
+                    styles.dropdownMenu(theme),
+                    {
+                      top: categorySelectorLayout.height + theme.spacing.xs,
+                      right: 0,
+                      width: categorySelectorLayout.width,
+                    },
+                  ]}
+                >
+                  {!categoryOptions.length ? (
+                    <Text style={styles.emptyState}>No category activity in this period.</Text>
+                  ) : (
+                    <ScrollView
+                      nestedScrollEnabled
+                      style={styles.dropdownList}
+                      showsVerticalScrollIndicator
                     >
-                      <View style={[styles.pickerDot, { backgroundColor: option.color }]} />
-                      <Text
-                        style={[styles.dropdownLabel, active && styles.pickerNameActive(option.color)]}
-                        numberOfLines={1}
-                      >
-                        {option.label}
-                      </Text>
-                      {active && <Ionicons name="checkmark" size={16} color={option.color} />}
-                    </Pressable>
-                  );
-                })
+                      {categoryOptions.map((option) => {
+                        const active = option.label === selectedCategory;
+                        return (
+                          <Pressable
+                            key={option.label}
+                            onPress={() => {
+                              setSelectedCategory(option.label);
+                              setIsCategoryMenuOpen(false);
+                            }}
+                            style={[
+                              styles.dropdownOption(theme),
+                              active && styles.dropdownOptionActive(option.color, theme),
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Show ${option.label}`}
+                          >
+                            <View style={[styles.pickerDot, { backgroundColor: option.color }]} />
+                            <Text
+                              style={[styles.dropdownLabel, active && styles.pickerNameActive(option.color)]}
+                              numberOfLines={1}
+                            >
+                              {option.label}
+                            </Text>
+                            {active && <Ionicons name="checkmark" size={16} color={option.color} />}
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
               )}
             </View>
-          )}
+          </View>
 
           <View style={styles.metricsRow}>
             <View style={styles.metricCard(theme)}>
@@ -640,10 +645,10 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: currentTheme.colors.surfaceElevated,
       gap: currentTheme.spacing.xs,
     }),
-    selectorRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing.sm,
+    selectorContainer: {
+      position: "relative",
+      alignItems: "flex-end",
+      flexShrink: 1,
     },
     dropdownRow: {
       flexDirection: "row",
@@ -683,6 +688,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 15,
       fontWeight: "700",
       color: theme.colors.text,
+    },
+    dropdownList: {
+      maxHeight: 5 * 44,
     },
     totalValue: (positive: boolean) => ({
       fontSize: 32,
