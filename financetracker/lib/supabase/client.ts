@@ -2,9 +2,9 @@ import Constants from "expo-constants";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL =
-  process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl;
+  "https://wdfirowqsecwvvsylguj.supabase.co";
 const SUPABASE_ANON_KEY =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseAnonKey;
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndkZmlyb3dxc2Vjd3Z2c3lsZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0NDMwMDMsImV4cCI6MjA3OTAxOTAwM30.bau4BorDp_rcaalOQ56Ke9VuogOiNjP8w_nTbar4wuw";
 
 let supabaseClient: SupabaseClient | null = null;
 
