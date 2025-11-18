@@ -15,6 +15,8 @@ interface Params {
   end?: string;
   accountId?: string;
   period?: string;
+  category?: string;
+  type?: string;
 }
 
 const formatCurrency = (
@@ -49,7 +51,8 @@ export default function NetIncomeWeekScreen() {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
-  const { start: startParam, end: endParam, accountId } = useLocalSearchParams<Params>();
+  const { start: startParam, end: endParam, accountId, category, type: typeParam } =
+    useLocalSearchParams<Params>();
 
   const transactions = useFinanceStore((state) => state.transactions);
   const accounts = useFinanceStore((state) => state.accounts);
@@ -59,6 +62,14 @@ export default function NetIncomeWeekScreen() {
   const end = useMemo(() => dayjs(endParam ?? undefined).endOf("day"), [endParam]);
 
   const selectedAccountId = typeof accountId === "string" && accountId.length ? accountId : null;
+  const categoryFilter = typeof category === "string" && category.length ? category : null;
+  const categoryType = typeParam === "expense" || typeParam === "income" ? typeParam : null;
+
+  const fallbackCategory = useMemo(() => {
+    if (categoryType === "income") return "Uncategorized Income";
+    if (categoryType === "expense") return "Uncategorized Expense";
+    return "Uncategorized";
+  }, [categoryType]);
 
   const visibleAccounts = useMemo(
     () => accounts.filter((account) => !account.excludeFromTotal && (account.currency || currency) === currency),
@@ -89,13 +100,26 @@ export default function NetIncomeWeekScreen() {
       return [];
     }
 
-    return scopedTransactions.filter((transaction) => {
+    const withinRange = scopedTransactions.filter((transaction) => {
       const date = dayjs(transaction.date);
       return (
         !transaction.excludeFromReports && !date.isBefore(start) && !date.isAfter(end)
       );
     });
-  }, [end, scopedTransactions, start]);
+
+    const typed = categoryType
+      ? withinRange.filter((transaction) => transaction.type === categoryType)
+      : withinRange;
+
+    if (!categoryFilter) {
+      return typed;
+    }
+
+    return typed.filter((transaction) => {
+      const label = transaction.category?.trim().length ? transaction.category : fallbackCategory;
+      return label === categoryFilter;
+    });
+  }, [categoryFilter, categoryType, end, fallbackCategory, scopedTransactions, start]);
 
   const groupedSections = useMemo(() => {
     const grouped = new Map<
@@ -189,11 +213,24 @@ export default function NetIncomeWeekScreen() {
                   {filtered.length} result{filtered.length === 1 ? "" : "s"}
                 </Text>
               </View>
-              <View style={styles.netBadge(net >= 0)}>
-                <Text style={styles.netBadgeLabel}>Net</Text>
-                <Text style={styles.netBadgeValue(net >= 0)}>
-                  {formatCurrency(net, currency, { signDisplay: "always" })}
-                </Text>
+              <View style={styles.summaryHeaderRight}>
+                {categoryFilter && (
+                  <View style={styles.badge(theme)}>
+                    <Ionicons
+                      name="pricetag"
+                      size={14}
+                      color={theme.colors.text}
+                      accessibilityElementsHidden
+                    />
+                    <Text style={styles.badgeText}>{categoryFilter}</Text>
+                  </View>
+                )}
+                <View style={styles.netBadge(net >= 0)}>
+                  <Text style={styles.netBadgeLabel}>Net</Text>
+                  <Text style={styles.netBadgeValue(net >= 0)}>
+                    {formatCurrency(net, currency, { signDisplay: "always" })}
+                  </Text>
+                </View>
               </View>
             </View>
 
@@ -348,6 +385,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       justifyContent: "space-between",
       alignItems: "center",
     },
+    summaryHeaderRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+    },
     overline: {
       fontSize: 12,
       color: theme.colors.textMuted,
@@ -385,6 +427,21 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       fontWeight: "800",
       color: positive ? theme.colors.success : theme.colors.danger,
     }),
+    badge: (currentTheme: ReturnType<typeof useAppTheme>) => ({
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: currentTheme.spacing.sm,
+      paddingVertical: 6,
+      borderRadius: currentTheme.radii.full,
+      backgroundColor: `${currentTheme.colors.surfaceElevated}80`,
+      borderWidth: 1,
+      borderColor: `${currentTheme.colors.border}80`,
+    }),
+    badgeText: {
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
     divider: {
       height: 1,
       backgroundColor: `${theme.colors.border}80`,

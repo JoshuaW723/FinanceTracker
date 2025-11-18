@@ -386,7 +386,23 @@ export default function CategoryDetailsScreen() {
           ) : (
             <View style={styles.list}>
               {breakdown.rows.map((item) => (
-                <View key={`${item.label}-${item.color}`} style={styles.listRow}>
+                <Pressable
+                  key={`${item.label}-${item.color}`}
+                  style={styles.listRow}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/transactions/category-report",
+                      params: {
+                        type: categoryType,
+                        category: item.label,
+                        period: selectedPeriodKey,
+                        accountId: selectedAccountId ?? "",
+                      },
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${item.label} details`}
+                >
                   <View style={[styles.categoryIcon, { backgroundColor: `${item.color}26` }]}>
                     <Text style={[styles.categoryInitial, { color: item.color }]}>
                       {item.label.charAt(0).toUpperCase()}
@@ -399,7 +415,7 @@ export default function CategoryDetailsScreen() {
                     <Text style={styles.listHint}>{item.percentage}% of total</Text>
                   </View>
                   <Text style={styles.listAmount}>{formatCurrency(item.value, currency)}</Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           )}
