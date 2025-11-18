@@ -374,32 +374,37 @@ export default function CategoryReportScreen() {
 
         <View style={styles.summaryCard(theme)}>
           <View style={styles.cardHeader}>
-            <View style={styles.headerSpacer} />
-            <View style={styles.pill(categoryType === "income")}>
-              <Text style={styles.pillLabel(categoryType === "income")}> 
-                {categoryType === "income" ? "Income" : "Expense"}
-              </Text>
+            <Text style={styles.totalValue(categoryType === "income")}>
+              {formatCurrency(selectedCategoryTotal, currency)}
+            </Text>
+
+            <View style={styles.selectorRow}>
+              <Pressable
+                onPress={() => setIsCategoryMenuOpen((prev) => !prev)}
+                style={styles.compactCategorySelector(theme)}
+                accessibilityRole="button"
+                accessibilityLabel="Choose category"
+                onLayout={(event) => setCategorySelectorLayout(event.nativeEvent.layout)}
+              >
+                <View style={styles.dropdownRow}>
+                  <Text style={styles.categoryName} numberOfLines={1}>
+                    {selectedCategory}
+                  </Text>
+                  <Ionicons
+                    name={isCategoryMenuOpen ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color={theme.colors.textMuted}
+                  />
+                </View>
+              </Pressable>
+
+              <View style={styles.pill(categoryType === "income")}> 
+                <Text style={styles.pillLabel(categoryType === "income")}>
+                  {categoryType === "income" ? "Income" : "Expense"}
+                </Text>
+              </View>
             </View>
           </View>
-
-          <Pressable
-            onPress={() => setIsCategoryMenuOpen((prev) => !prev)}
-            style={styles.compactCategorySelector(theme)}
-            accessibilityRole="button"
-            accessibilityLabel="Choose category"
-            onLayout={(event) => setCategorySelectorLayout(event.nativeEvent.layout)}
-          >
-            <View style={styles.dropdownRow}>
-              <Text style={styles.categoryName} numberOfLines={1}>
-                {selectedCategory}
-              </Text>
-              <Ionicons
-                name={isCategoryMenuOpen ? "chevron-up" : "chevron-down"}
-                size={18}
-                color={theme.colors.textMuted}
-              />
-            </View>
-          </Pressable>
 
           {isCategoryMenuOpen && categorySelectorLayout && (
             <View
@@ -445,10 +450,6 @@ export default function CategoryReportScreen() {
               )}
             </View>
           )}
-
-          <Text style={styles.totalValue(categoryType === "income")}>
-            {formatCurrency(selectedCategoryTotal, currency)}
-          </Text>
 
           <View style={styles.metricsRow}>
             <View style={styles.metricCard(theme)}>
@@ -629,9 +630,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.text,
     },
     compactCategorySelector: (currentTheme: ReturnType<typeof useAppTheme>) => ({
-      alignSelf: "flex-start",
-      minWidth: 150,
-      maxWidth: "70%",
+      minWidth: 120,
+      maxWidth: 180,
       paddingVertical: currentTheme.spacing.sm,
       paddingHorizontal: currentTheme.spacing.sm,
       borderRadius: currentTheme.radii.md,
@@ -640,6 +640,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: currentTheme.colors.surfaceElevated,
       gap: currentTheme.spacing.xs,
     }),
+    selectorRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
+    },
     dropdownRow: {
       flexDirection: "row",
       alignItems: "center",
