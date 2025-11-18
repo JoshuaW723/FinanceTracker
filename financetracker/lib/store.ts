@@ -1,5 +1,19 @@
 import { create } from "zustand";
 
+import type { FinanceSnapshotPayload } from "./supabase/storage";
+import {
+  deleteAccount,
+  deleteBudgetGoal,
+  deleteRecurringTransaction,
+  deleteTransaction,
+  upsertAccount,
+  upsertBudgetGoal,
+  upsertCategories,
+  upsertProfile,
+  upsertRecurringTransaction,
+  upsertTransaction,
+} from "./supabase/storage";
+
 export type TransactionType = "income" | "expense" | "transfer";
 
 export type AccountType = "cash" | "bank" | "card" | "investment";
@@ -145,6 +159,7 @@ export interface FinanceState {
     >,
   ) => void;
   archiveAccount: (id: string, archived?: boolean) => void;
+  hydrateFromRemote: (payload: FinanceSnapshotPayload) => void;
 }
 
 const applyAccountBalanceUpdate = (state: FinanceState, transactions: Transaction[]) => ({
@@ -696,11 +711,14 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         toAccountId: transaction.type === "transfer" ? normalizedToAccountId : null,
       };
 
+      void upsertTransaction(payload);
+
       const nextTransactions = [payload, ...state.transactions];
       return applyAccountBalanceUpdate(state, nextTransactions);
     }),
   updateTransaction: (id, updates) =>
     set((state) => {
+      let updated: Transaction | null = null;
       const nextTransactions = state.transactions.map((transaction) => {
         if (transaction.id !== id) {
           return transaction;
@@ -759,14 +777,24 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
           next.category = next.category || "Transfer";
         }
 
+        updated = next;
         return next;
       });
+
+      if (updated) {
+        void upsertTransaction(updated);
+      }
 
       return applyAccountBalanceUpdate(state, nextTransactions);
     }),
   removeTransaction: (id) =>
     set((state) => {
       const nextTransactions = state.transactions.filter((transaction) => transaction.id !== id);
+
+      if (nextTransactions.length !== state.transactions.length) {
+        void deleteTransaction(id);
+      }
+
       return applyAccountBalanceUpdate(state, nextTransactions);
     }),
   duplicateTransaction: (id) => {
@@ -791,44 +819,45 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
 
     get().addTransaction(copy);
   },
-  addRecurringTransaction: (transaction) =>
-    set((state) => {
-      const normalizedStart = new Date(transaction.nextOccurrence);
-      normalizedStart.setHours(0, 0, 0, 0);
-      const startDateIso = normalizedStart.toISOString();
+  addRecurringTransaction: (transaction) => {
+    const normalizedStart = new Date(transaction.nextOccurrence);
+    normalizedStart.setHours(0, 0, 0, 0);
+    const startDateIso = normalizedStart.toISOString();
 
-      const alreadyLogged = state.transactions.some(
-        (entry) =>
-          entry.date === startDateIso &&
-          entry.amount === transaction.amount &&
-          entry.type === transaction.type &&
-          entry.category === transaction.category &&
-          entry.note === transaction.note.trim(),
-      );
+    const state = get();
+    const alreadyLogged = state.transactions.some(
+      (entry) =>
+        entry.date === startDateIso &&
+        entry.amount === transaction.amount &&
+        entry.type === transaction.type &&
+        entry.category === transaction.category &&
+        entry.note === transaction.note.trim(),
+    );
 
-      const nextOccurrence = alreadyLogged
-        ? nextOccurrenceForFrequency(startDateIso, transaction.frequency)
-        : startDateIso;
+    const nextOccurrence = alreadyLogged
+      ? nextOccurrenceForFrequency(startDateIso, transaction.frequency)
+      : startDateIso;
 
-      const normalizedAccountId = transaction.accountId || DEFAULT_ACCOUNT_ID;
-      const normalizedToAccountId =
-        transaction.type === "transfer" ? transaction.toAccountId || null : null;
+    const normalizedAccountId = transaction.accountId || DEFAULT_ACCOUNT_ID;
+    const normalizedToAccountId =
+      transaction.type === "transfer" ? transaction.toAccountId || null : null;
 
-      return {
-        recurringTransactions: [
-          ...state.recurringTransactions,
-          {
-            id: `r-${state.recurringTransactions.length + 1}`,
-            ...transaction,
-            accountId: normalizedAccountId,
-            toAccountId: normalizedToAccountId,
-            nextOccurrence,
-            isActive: true,
-          },
-        ],
-      };
-    }),
-  toggleRecurringTransaction: (id, active) =>
+    const entry: RecurringTransaction = {
+      id: `r-${state.recurringTransactions.length + 1}`,
+      ...transaction,
+      accountId: normalizedAccountId,
+      toAccountId: normalizedToAccountId,
+      nextOccurrence,
+      isActive: true,
+    };
+
+    set((current) => ({
+      recurringTransactions: [...current.recurringTransactions, entry],
+    }));
+
+    void upsertRecurringTransaction(entry);
+  },
+  toggleRecurringTransaction: (id, active) => {
     set((state) => ({
       recurringTransactions: state.recurringTransactions.map((item) =>
         item.id === id
@@ -838,7 +867,13 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
             }
           : item,
       ),
-    })),
+    }));
+
+    const updated = get().recurringTransactions.find((item) => item.id === id);
+    if (updated) {
+      void upsertRecurringTransaction({ ...updated, isActive: updated.isActive ?? true });
+    }
+  },
   logRecurringTransaction: (id) => {
     const store = get();
     const recurring = store.recurringTransactions.find((item) => item.id === id);
@@ -847,19 +882,18 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
     }
 
     const nextOccurrence = nextOccurrenceForFrequency(recurring.nextOccurrence, recurring.frequency);
+    const entry: Transaction = {
+      id: `t-${uid++}`,
+      amount: recurring.amount,
+      note: recurring.note,
+      type: recurring.type,
+      category: recurring.category || (recurring.type === "transfer" ? "Transfer" : ""),
+      date: recurring.nextOccurrence,
+      accountId: recurring.accountId || DEFAULT_ACCOUNT_ID,
+      toAccountId: recurring.type === "transfer" ? recurring.toAccountId || null : null,
+    };
 
     set((state) => {
-      const entry: Transaction = {
-        id: `t-${uid++}`,
-        amount: recurring.amount,
-        note: recurring.note,
-        type: recurring.type,
-        category: recurring.category || (recurring.type === "transfer" ? "Transfer" : ""),
-        date: recurring.nextOccurrence,
-        accountId: recurring.accountId || DEFAULT_ACCOUNT_ID,
-        toAccountId: recurring.type === "transfer" ? recurring.toAccountId || null : null,
-      };
-
       const nextTransactions = [entry, ...state.transactions];
       const accountUpdate = applyAccountBalanceUpdate(state, nextTransactions);
 
@@ -875,46 +909,76 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
         ),
       };
     });
+
+    void upsertTransaction(entry);
+    void upsertRecurringTransaction({ ...recurring, nextOccurrence });
   },
   addBudgetGoal: (goal) =>
-    set((state) => ({
-      budgetGoals: [
-        ...state.budgetGoals,
-        {
-          id: `g-${state.budgetGoals.length + 1}`,
-          ...goal,
-        },
-      ],
-    })),
+    set((state) => {
+      const entry: BudgetGoal = {
+        id: `g-${state.budgetGoals.length + 1}`,
+        ...goal,
+      };
+
+      void upsertBudgetGoal(entry);
+
+      return {
+        budgetGoals: [...state.budgetGoals, entry],
+      };
+    }),
   updateBudgetGoal: (id, updates) =>
-    set((state) => ({
-      budgetGoals: state.budgetGoals.map((goal) =>
-        goal.id === id
-          ? {
-              ...goal,
-              ...updates,
-            }
-          : goal,
-      ),
-    })),
+    set((state) => {
+      let updated: BudgetGoal | null = null;
+      const nextGoals = state.budgetGoals.map((goal) => {
+        if (goal.id !== id) {
+          return goal;
+        }
+
+        updated = {
+          ...goal,
+          ...updates,
+        };
+        return updated;
+      });
+
+      if (updated) {
+        void upsertBudgetGoal(updated);
+      }
+
+      return { budgetGoals: nextGoals };
+    }),
   removeBudgetGoal: (id) =>
-    set((state) => ({
-      budgetGoals: state.budgetGoals.filter((goal) => goal.id !== id),
-    })),
+    set((state) => {
+      const nextGoals = state.budgetGoals.filter((goal) => goal.id !== id);
+
+      if (nextGoals.length !== state.budgetGoals.length) {
+        void deleteBudgetGoal(id);
+      }
+
+      return { budgetGoals: nextGoals };
+    }),
   updateProfile: (payload) =>
-    set((state) => ({
-      profile: {
+    set((state) => {
+      const profile = {
         ...state.profile,
         ...payload,
-      },
-    })),
+      };
+
+      void upsertProfile(profile, state.preferences);
+
+      return { profile };
+    }),
   setThemeMode: (mode) =>
-    set((state) => ({
-      preferences: {
+    set((state) => {
+      const preferences = {
         ...state.preferences,
         themeMode: mode,
-      },
-    })),
+      };
+
+      void upsertProfile(state.profile, preferences);
+
+      return { preferences };
+    }),
   addAccount: ({ name, type, currency, initialBalance, excludeFromTotal }) =>
     set((state) => {
       const value = name.trim();
@@ -943,6 +1007,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       };
 
       const nextAccounts = [...state.accounts, nextAccount];
+      void upsertAccount(nextAccount);
       return {
         accounts: recalculateAccountBalances(nextAccounts, state.transactions, state.profile.currency),
       };
@@ -999,6 +1064,7 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
 
         if (changed) {
           mutated = true;
+          void upsertAccount(next);
           return next;
         }
 
@@ -1043,16 +1109,53 @@ export const useFinanceStore = create<FinanceState>((set, get) => ({
       return;
     }
 
+    const nextCategory: Category = { id, name: value, type: category.type };
+
     set((state) => ({
       preferences: {
         ...state.preferences,
-        categories: [
-          ...state.preferences.categories,
-          { id, name: value, type: category.type },
-        ],
+        categories: [...state.preferences.categories, nextCategory],
       },
     }));
+
+    void upsertCategories(get().preferences.categories);
   },
+  hydrateFromRemote: (payload) =>
+    set((state) => {
+      const nextProfile = payload.profile
+        ? { ...state.profile, ...payload.profile }
+        : state.profile;
+
+      const normalizedCategories = payload.preferences?.categories?.length
+        ? payload.preferences.categories
+        : state.preferences.categories;
+
+      const nextPreferences = payload.preferences
+        ? {
+            ...state.preferences,
+            ...payload.preferences,
+            categories: normalizedCategories,
+          }
+        : state.preferences;
+
+      const nextTransactions = payload.transactions ?? state.transactions;
+      const nextAccountsBase = payload.accounts ?? state.accounts;
+      const fallbackCurrency = nextProfile.currency || state.profile.currency;
+      const nextAccounts = recalculateAccountBalances(
+        nextAccountsBase,
+        nextTransactions,
+        fallbackCurrency,
+      );
+
+      return {
+        profile: nextProfile,
+        preferences: nextPreferences,
+        accounts: nextAccounts,
+        transactions: nextTransactions,
+        recurringTransactions: payload.recurringTransactions ?? state.recurringTransactions,
+        budgetGoals: payload.budgetGoals ?? state.budgetGoals,
+      };
+    }),
 }));
 
 export const selectActiveAccounts = (state: FinanceState) =>

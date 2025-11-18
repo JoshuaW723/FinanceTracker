@@ -55,8 +55,27 @@ theme.ts                 // Shared colors, spacing, typography, components
 - `@react-native-community/datetimepicker` for native date selection
 - `react-native-svg` for the dashboard mini chart
 - `dayjs` for lightweight date formatting
+- `@supabase/supabase-js` for cloud persistence
 
 All dependencies ship with Expo SDK 54 defaults, so no native configuration is required.
+
+## Supabase setup
+
+The app can hydrate and persist finance data against a Supabase project. Provide your
+workspace values through Expo public env vars or `app.json` extras:
+
+```
+EXPO_PUBLIC_SUPABASE_URL=<your project url>
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<your anon key>
+```
+
+When configured, the app will:
+
+- Load accounts, transactions, recurring items, budget goals, and categories from Supabase at startup.
+- Write changes (adding/editing transactions, accounts, categories, recurring entries, and budget goals) back to Supabase tables.
+- Sync profile preferences such as currency and theme mode.
+
+Tables are expected to follow the names used in `lib/supabase/storage.ts` (e.g., `transactions`, `accounts`, `recurring_transactions`).
 
 ## Scripts
 

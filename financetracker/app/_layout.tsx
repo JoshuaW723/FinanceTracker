@@ -3,11 +3,14 @@ import { StatusBar } from "expo-status-bar";
 
 import { useAppTheme } from "../theme";
 import { useFinanceStore } from "../lib/store";
+import { useSupabaseBootstrap } from "../lib/supabase/bootstrap";
 
 export default function RootLayout() {
   const theme = useAppTheme();
   const themeMode = useFinanceStore((state) => state.preferences.themeMode);
   const statusBarStyle = themeMode === "light" ? "dark" : "light";
+
+  useSupabaseBootstrap();
 
   return (
     <>

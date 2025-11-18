@@ -48,7 +48,9 @@
       "router": {},
       "eas": {
         "projectId": "220c2e25-c875-429b-820d-ba0e4d33d124"
-      }
+      },
+      "supabaseUrl": "",
+      "supabaseAnonKey": ""
     },
     "owner": "joshuat723"
   }
