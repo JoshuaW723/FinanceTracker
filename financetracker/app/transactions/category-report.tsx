@@ -195,6 +195,9 @@ export default function CategoryReportScreen() {
     return initial ?? categoryOptions[0]?.label ?? fallbackCategory;
   });
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [categorySelectorLayout, setCategorySelectorLayout] = useState<
+    { x: number; y: number; width: number; height: number } | null
+  >(null);
 
   useEffect(() => {
     if (!categoryOptions.length) return;
@@ -384,6 +387,7 @@ export default function CategoryReportScreen() {
             style={styles.compactCategorySelector(theme)}
             accessibilityRole="button"
             accessibilityLabel="Choose category"
+            onLayout={(event) => setCategorySelectorLayout(event.nativeEvent.layout)}
           >
             <View style={styles.dropdownRow}>
               <Text style={styles.categoryName} numberOfLines={1}>
@@ -397,8 +401,17 @@ export default function CategoryReportScreen() {
             </View>
           </Pressable>
 
-          {isCategoryMenuOpen && (
-            <View style={styles.dropdownMenu(theme)}>
+          {isCategoryMenuOpen && categorySelectorLayout && (
+            <View
+              style={[
+                styles.dropdownMenu(theme),
+                {
+                  top: categorySelectorLayout.y + categorySelectorLayout.height + theme.spacing.xs,
+                  left: categorySelectorLayout.x,
+                  width: categorySelectorLayout.width,
+                },
+              ]}
+            >
               {!categoryOptions.length ? (
                 <Text style={styles.emptyState}>No category activity in this period.</Text>
               ) : (
@@ -590,6 +603,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     summaryCard: (currentTheme: ReturnType<typeof useAppTheme>) => ({
       ...currentTheme.components.card,
       gap: currentTheme.spacing.md,
+      position: "relative",
     }),
     cardHeader: {
       flexDirection: "row",
@@ -615,8 +629,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.text,
     },
     compactCategorySelector: (currentTheme: ReturnType<typeof useAppTheme>) => ({
+      alignSelf: "flex-start",
+      minWidth: 150,
+      maxWidth: "70%",
       paddingVertical: currentTheme.spacing.sm,
-      paddingHorizontal: currentTheme.spacing.md,
+      paddingHorizontal: currentTheme.spacing.sm,
       borderRadius: currentTheme.radii.md,
       borderWidth: 1,
       borderColor: `${currentTheme.colors.border}80`,
@@ -630,12 +647,18 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       gap: theme.spacing.sm,
     },
     dropdownMenu: (currentTheme: ReturnType<typeof useAppTheme>) => ({
-      marginTop: currentTheme.spacing.xs,
+      position: "absolute",
+      zIndex: 10,
       borderRadius: currentTheme.radii.lg,
       borderWidth: 1,
       borderColor: `${currentTheme.colors.border}70`,
       backgroundColor: currentTheme.colors.surface,
       overflow: "hidden",
+      elevation: 6,
+      shadowColor: "#000",
+      shadowOpacity: 0.12,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
     }),
     dropdownOption: (currentTheme: ReturnType<typeof useAppTheme>) => ({
       flexDirection: "row",
