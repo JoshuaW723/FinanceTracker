@@ -278,6 +278,7 @@ export default function CategoryDetailsScreen() {
   }, [categoryTransactions, categoryType, theme.colors.textMuted, totalAmount]);
 
   const comparisonDelta = totalAmount - trailingAverage;
+  const isFavorableDelta = categoryType === "income" ? comparisonDelta >= 0 : comparisonDelta <= 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -355,7 +356,7 @@ export default function CategoryDetailsScreen() {
             <View style={styles.metricCard(theme)}>
               <Text style={styles.metricLabel}>3-Month avg</Text>
               <Text style={styles.metricValue}>{formatCurrency(trailingAverage, currency)}</Text>
-              <Text style={styles.metricDelta(comparisonDelta >= 0)}>
+              <Text style={styles.metricDelta(isFavorableDelta)}>
                 {comparisonDelta >= 0 ? "Above" : "Below"} recent average by {formatCurrency(Math.abs(comparisonDelta), currency)}
               </Text>
             </View>
@@ -373,21 +374,11 @@ export default function CategoryDetailsScreen() {
 
         <View style={styles.chartCard(theme)}>
           <View style={styles.chartHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Category breakdown</Text>
-              <Text style={styles.sectionSubtitle}>
-                Distribution of {categoryType === "income" ? "income" : "spending"} for this period
-              </Text>
-            </View>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: theme.colors.primary }]} />
-              <Text style={styles.legendLabel}>Top categories</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Category breakdown</Text>
           </View>
 
           <View style={styles.breakdownRow}>
-            <PieChart data={breakdown.slices} theme={theme} size={170} />
-            <View style={styles.legend}>{renderLegend(breakdown.slices, currency, theme)}</View>
+            <PieChart data={breakdown.slices} theme={theme} size={180} />
           </View>
 
           {!breakdown.rows.length ? (
@@ -396,8 +387,10 @@ export default function CategoryDetailsScreen() {
             <View style={styles.list}>
               {breakdown.rows.map((item) => (
                 <View key={`${item.label}-${item.color}`} style={styles.listRow}>
-                  <View style={[styles.categoryIcon, { backgroundColor: `${item.color}26` }]}> 
-                    <Text style={styles.categoryInitial}>{item.label.charAt(0).toUpperCase()}</Text>
+                  <View style={[styles.categoryIcon, { backgroundColor: `${item.color}26` }]}>
+                    <Text style={[styles.categoryInitial, { color: item.color }]}>
+                      {item.label.charAt(0).toUpperCase()}
+                    </Text>
                   </View>
                   <View style={styles.listMeta}>
                     <Text style={styles.listLabel} numberOfLines={1}>
@@ -415,58 +408,6 @@ export default function CategoryDetailsScreen() {
     </SafeAreaView>
   );
 }
-
-const renderLegend = (data: CategorySlice[], currency: string, theme: Theme) => {
-  const styles = legendStyles(theme);
-
-  if (!data.length) {
-    return <Text style={styles.emptyLegend}>No data for this period</Text>;
-  }
-
-  return data.map((item) => (
-    <View key={`${item.label}-${item.color}`} style={styles.legendRow}>
-      <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-      <View style={styles.legendMeta}>
-        <Text style={styles.legendLabel}>{item.label}</Text>
-        <Text style={styles.legendAmount}>
-          {formatCurrency(item.value, currency)} · {item.percentage}%
-        </Text>
-      </View>
-    </View>
-  ));
-};
-
-const legendStyles = (theme: Theme) =>
-  StyleSheet.create({
-    legendRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginBottom: 8,
-    },
-    legendDot: {
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-    },
-    legendMeta: {
-      flex: 1,
-    },
-    legendLabel: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    legendAmount: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-    },
-    emptyLegend: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-    },
-  });
-
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     safeArea: {
@@ -608,35 +549,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontWeight: "700",
       color: theme.colors.text,
     },
-    sectionSubtitle: {
-      fontSize: 13,
-      color: theme.colors.textMuted,
-      marginTop: 2,
-    },
-    legendRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    legendDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: theme.colors.success,
-    },
-    legendLabel: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-    },
     breakdownRow: {
-      flexDirection: "row",
-      gap: theme.spacing.md,
       alignItems: "center",
-      flexWrap: "wrap",
-    },
-    legend: {
-      flex: 1,
-      minWidth: 180,
+      justifyContent: "center",
     },
     emptyState: {
       fontSize: 13,
