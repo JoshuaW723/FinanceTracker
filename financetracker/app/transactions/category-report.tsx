@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 
-import { useAppTheme, type Theme } from "../../theme";
+import { useAppTheme } from "../../theme";
 import { useFinanceStore } from "../../lib/store";
 import { buildMonthlyPeriods } from "../../lib/periods";
 import { filterTransactionsByAccount } from "../../lib/transactions";
@@ -194,6 +194,7 @@ export default function CategoryReportScreen() {
     const initial = typeof categoryParam === "string" && categoryParam.length ? categoryParam : null;
     return initial ?? categoryOptions[0]?.label ?? fallbackCategory;
   });
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!categoryOptions.length) return;
@@ -370,27 +371,69 @@ export default function CategoryReportScreen() {
 
         <View style={styles.summaryCard(theme)}>
           <View style={styles.cardHeader}>
-            <View style={styles.categorySelector(theme)}>
-              <View style={[styles.categoryIcon, { backgroundColor: `${selectedCategoryColor}22` }]}>
-                <Text style={[styles.categoryInitial, { color: selectedCategoryColor }]}>
-                  {selectedCategory.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.categoryMeta}>
-                <Text style={styles.overline}>Category</Text>
-                <Text style={styles.categoryName} numberOfLines={1}>
-                  {selectedCategory}
-                </Text>
-              </View>
-              <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
-            </View>
-
-            <View style={styles.pill(categoryType === "income")}> 
-              <Text style={styles.pillLabel(categoryType === "income")}>{
-                categoryType === "income" ? "Income" : "Expense"
-              }</Text>
+            <View style={styles.headerSpacer} />
+            <View style={styles.pill(categoryType === "income")}>
+              <Text style={styles.pillLabel(categoryType === "income")}> 
+                {categoryType === "income" ? "Income" : "Expense"}
+              </Text>
             </View>
           </View>
+
+          <Pressable
+            onPress={() => setIsCategoryMenuOpen((prev) => !prev)}
+            style={styles.compactCategorySelector(theme)}
+            accessibilityRole="button"
+            accessibilityLabel="Choose category"
+          >
+            <Text style={styles.overline}>Category</Text>
+            <View style={styles.dropdownRow}>
+              <Text style={styles.categoryName} numberOfLines={1}>
+                {selectedCategory}
+              </Text>
+              <Ionicons
+                name={isCategoryMenuOpen ? "chevron-up" : "chevron-down"}
+                size={18}
+                color={theme.colors.textMuted}
+              />
+            </View>
+          </Pressable>
+
+          {isCategoryMenuOpen && (
+            <View style={styles.dropdownMenu(theme)}>
+              {!categoryOptions.length ? (
+                <Text style={styles.emptyState}>No category activity in this period.</Text>
+              ) : (
+                categoryOptions.map((option) => {
+                  const active = option.label === selectedCategory;
+                  return (
+                    <Pressable
+                      key={option.label}
+                      onPress={() => {
+                        setSelectedCategory(option.label);
+                        setIsCategoryMenuOpen(false);
+                      }}
+                      style={[
+                        styles.dropdownOption(theme),
+                        active && styles.dropdownOptionActive(option.color, theme),
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Show ${option.label}`}
+                    >
+                      <View style={[styles.pickerDot, { backgroundColor: option.color }]} />
+                      <Text
+                        style={[styles.dropdownLabel, active && styles.pickerNameActive(option.color)]}
+                        numberOfLines={1}
+                      >
+                        {option.label}
+                      </Text>
+                      <Text style={styles.dropdownValue}>{formatCurrency(option.value, currency)}</Text>
+                      {active && <Ionicons name="checkmark" size={16} color={option.color} />}
+                    </Pressable>
+                  );
+                })
+              )}
+            </View>
+          )}
 
           <Text style={styles.totalValue(categoryType === "income")}>
             {formatCurrency(selectedCategoryTotal, currency)}
@@ -420,39 +463,6 @@ export default function CategoryReportScreen() {
               <Text style={styles.accountLabel} numberOfLines={1}>
                 {accounts.find((account) => account.id === selectedAccountId)?.name ?? "Selected account"}
               </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.categoryPicker(theme)}>
-          <Text style={styles.pickerLabel}>Choose category</Text>
-          {!categoryOptions.length ? (
-            <Text style={styles.emptyState}>No category activity in this period.</Text>
-          ) : (
-            <View style={styles.pickerGrid}>
-              {categoryOptions.map((option) => {
-                const active = option.label === selectedCategory;
-                return (
-                  <Pressable
-                    key={option.label}
-                    onPress={() => setSelectedCategory(option.label)}
-                    style={[styles.pickerChip(theme), active && styles.pickerChipActive(option.color, theme)]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Show ${option.label}`}
-                  >
-                    <View style={[styles.pickerDot, { backgroundColor: option.color }]} />
-                    <View style={styles.pickerMeta}>
-                      <Text style={[styles.pickerName, active && styles.pickerNameActive(option.color)]}>
-                        {option.label}
-                      </Text>
-                      <Text style={styles.pickerHint}>{formatCurrency(option.value, currency)}</Text>
-                    </View>
-                    {active && (
-                      <Ionicons name="checkmark" size={16} color={option.color} />
-                    )}
-                  </Pressable>
-                );
-              })}
             </View>
           )}
         </View>
@@ -596,25 +606,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       letterSpacing: 0.5,
       marginBottom: 6,
     },
-    categorySelector: (currentTheme: Theme) => ({
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: currentTheme.spacing.md,
-      paddingVertical: currentTheme.spacing.sm,
-      paddingHorizontal: currentTheme.spacing.md,
-      borderRadius: currentTheme.radii.md,
-      backgroundColor: currentTheme.colors.surfaceElevated,
-      borderWidth: 1,
-      borderColor: `${currentTheme.colors.border}80`,
-    }),
-    categoryIcon: {
-      width: 42,
-      height: 42,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
     categoryIconSmall: {
       width: 36,
       height: 36,
@@ -627,14 +618,56 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontWeight: "700",
       color: theme.colors.text,
     },
-    categoryMeta: {
-      flex: 1,
-      gap: 2,
-    },
     categoryName: {
       fontSize: 16,
       fontWeight: "700",
       color: theme.colors.text,
+    },
+    compactCategorySelector: (currentTheme: ReturnType<typeof useAppTheme>) => ({
+      paddingVertical: currentTheme.spacing.sm,
+      paddingHorizontal: currentTheme.spacing.md,
+      borderRadius: currentTheme.radii.md,
+      borderWidth: 1,
+      borderColor: `${currentTheme.colors.border}80`,
+      backgroundColor: currentTheme.colors.surfaceElevated,
+      gap: currentTheme.spacing.xs,
+    }),
+    dropdownRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.sm,
+    },
+    dropdownMenu: (currentTheme: ReturnType<typeof useAppTheme>) => ({
+      marginTop: currentTheme.spacing.xs,
+      borderRadius: currentTheme.radii.lg,
+      borderWidth: 1,
+      borderColor: `${currentTheme.colors.border}70`,
+      backgroundColor: currentTheme.colors.surface,
+      overflow: "hidden",
+    }),
+    dropdownOption: (currentTheme: ReturnType<typeof useAppTheme>) => ({
+      flexDirection: "row",
+      alignItems: "center",
+      gap: currentTheme.spacing.sm,
+      paddingHorizontal: currentTheme.spacing.md,
+      paddingVertical: currentTheme.spacing.sm,
+      borderBottomWidth: 1,
+      borderColor: `${currentTheme.colors.border}60`,
+    }),
+    dropdownOptionActive: (color: string, currentTheme: ReturnType<typeof useAppTheme>) => ({
+      backgroundColor: `${color}12`,
+      borderColor: `${color}70`,
+    }),
+    dropdownLabel: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    dropdownValue: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
     },
     totalValue: (positive: boolean) => ({
       fontSize: 32,
@@ -695,59 +728,14 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       textTransform: "uppercase",
       letterSpacing: 0.5,
     }),
-    categoryPicker: (currentTheme: ReturnType<typeof useAppTheme>) => ({
-      ...currentTheme.components.card,
-      gap: currentTheme.spacing.md,
-    }),
-    pickerLabel: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: theme.colors.text,
-    },
-    pickerGrid: {
-      gap: theme.spacing.sm,
-    },
-    pickerChip: (currentTheme: ReturnType<typeof useAppTheme>) => ({
-      flexDirection: "row",
-      alignItems: "center",
-      gap: currentTheme.spacing.md,
-      padding: currentTheme.spacing.md,
-      borderRadius: currentTheme.radii.md,
-      borderWidth: 1,
-      borderColor: `${currentTheme.colors.border}80`,
-      backgroundColor: currentTheme.colors.surface,
-    }),
-    pickerChipActive: (color: string, currentTheme: ReturnType<typeof useAppTheme>) => ({
-      borderColor: color,
-      backgroundColor: `${color}12`,
-      shadowColor: color,
-      shadowOpacity: 0.12,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 3,
-      borderWidth: 1.2,
-    }),
     pickerDot: {
       width: 12,
       height: 12,
       borderRadius: 6,
     },
-    pickerMeta: {
-      flex: 1,
-      gap: 2,
-    },
-    pickerName: {
-      fontSize: 15,
-      fontWeight: "700",
-      color: theme.colors.text,
-    },
     pickerNameActive: (color: string) => ({
       color,
     }),
-    pickerHint: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-    },
     weekCard: (currentTheme: ReturnType<typeof useAppTheme>) => ({
       ...currentTheme.components.card,
       gap: currentTheme.spacing.md,

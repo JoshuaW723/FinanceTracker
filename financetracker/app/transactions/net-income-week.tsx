@@ -214,17 +214,6 @@ export default function NetIncomeWeekScreen() {
                 </Text>
               </View>
               <View style={styles.summaryHeaderRight}>
-                {categoryFilter && (
-                  <View style={styles.badge(theme)}>
-                    <Ionicons
-                      name="pricetag"
-                      size={14}
-                      color={theme.colors.text}
-                      accessibilityElementsHidden
-                    />
-                    <Text style={styles.badgeText}>{categoryFilter}</Text>
-                  </View>
-                )}
                 <View style={styles.netBadge(net >= 0)}>
                   <Text style={styles.netBadgeLabel}>Net</Text>
                   <Text style={styles.netBadgeValue(net >= 0)}>
@@ -427,21 +416,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       fontWeight: "800",
       color: positive ? theme.colors.success : theme.colors.danger,
     }),
-    badge: (currentTheme: ReturnType<typeof useAppTheme>) => ({
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingHorizontal: currentTheme.spacing.sm,
-      paddingVertical: 6,
-      borderRadius: currentTheme.radii.full,
-      backgroundColor: `${currentTheme.colors.surfaceElevated}80`,
-      borderWidth: 1,
-      borderColor: `${currentTheme.colors.border}80`,
-    }),
-    badgeText: {
-      fontWeight: "700",
-      color: theme.colors.text,
-    },
     divider: {
       height: 1,
       backgroundColor: `${theme.colors.border}80`,
