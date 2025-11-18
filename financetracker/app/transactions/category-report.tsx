@@ -385,7 +385,6 @@ export default function CategoryReportScreen() {
             accessibilityRole="button"
             accessibilityLabel="Choose category"
           >
-            <Text style={styles.overline}>Category</Text>
             <View style={styles.dropdownRow}>
               <Text style={styles.categoryName} numberOfLines={1}>
                 {selectedCategory}
@@ -426,7 +425,6 @@ export default function CategoryReportScreen() {
                       >
                         {option.label}
                       </Text>
-                      <Text style={styles.dropdownValue}>{formatCurrency(option.value, currency)}</Text>
                       {active && <Ionicons name="checkmark" size={16} color={option.color} />}
                     </Pressable>
                   );
@@ -599,13 +597,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       justifyContent: "space-between",
       gap: theme.spacing.md,
     },
-    overline: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-      marginBottom: 6,
-    },
     categoryIconSmall: {
       width: 36,
       height: 36,
@@ -664,10 +655,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 15,
       fontWeight: "700",
       color: theme.colors.text,
-    },
-    dropdownValue: {
-      fontSize: 13,
-      color: theme.colors.textMuted,
     },
     totalValue: (positive: boolean) => ({
       fontSize: 32,

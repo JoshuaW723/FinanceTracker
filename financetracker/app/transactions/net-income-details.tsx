@@ -187,8 +187,9 @@ export default function NetIncomeDetailsScreen() {
   );
 
   const totalNet = weeklySummaries.reduce((acc, week) => acc + week.net, 0);
-  const maxWeeklyNet = Math.max(...weeklySummaries.map((week) => Math.abs(week.net)), 0);
-  const weekScale = maxWeeklyNet || 1;
+  const hasWeeklyActivity = weeklySummaries.some(
+    (week) => week.income !== 0 || week.expense !== 0,
+  );
   const [chartWidth, setChartWidth] = useState(0);
 
   const { ticks, maxValue } = useMemo(() => {
@@ -430,13 +431,11 @@ export default function NetIncomeDetailsScreen() {
             <Text style={styles.listSubtitle}>Tap a week to view its transactions</Text>
           </View>
 
-          {!weeklySummaries.length || maxWeeklyNet === 0 ? (
+          {!weeklySummaries.length || !hasWeeklyActivity ? (
             <Text style={styles.emptyStateText}>No weekly activity in this period.</Text>
           ) : (
             <View style={styles.list}>
               {weeklySummaries.map((week) => {
-                const fraction = Math.min(1, Math.abs(week.net) / weekScale);
-                const positive = week.net >= 0;
                 return (
                   <Pressable
                     key={week.label}
@@ -451,20 +450,18 @@ export default function NetIncomeDetailsScreen() {
                     </View>
 
                     <View style={styles.weekValueColumn}>
-                      <View style={styles.weekBarTrack}>
-                        <View
-                          style={[
-                            styles.weekBarFill,
-                            {
-                              backgroundColor: positive ? theme.colors.success : theme.colors.danger,
-                              width: `${fraction * 100}%`,
-                            },
-                          ]}
-                        />
+                      <View style={styles.amountRow}>
+                        <Text style={styles.amountLabel}>Expense</Text>
+                        <Text style={styles.weekExpense}>
+                          {formatCurrency(week.expense, currency)}
+                        </Text>
                       </View>
-                      <Text style={styles.weekAmount(positive)}>
-                        {formatCurrency(week.net, currency, { signDisplay: "always" })}
-                      </Text>
+                      <View style={styles.amountRow}>
+                        <Text style={styles.amountLabel}>Income</Text>
+                        <Text style={styles.weekIncome}>
+                          {formatCurrency(week.income, currency)}
+                        </Text>
+                      </View>
                     </View>
                   </Pressable>
                 );
@@ -651,9 +648,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       textAlign: "center",
     },
     listHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
+      gap: 4,
     },
     listTitle: {
       fontSize: 18,
@@ -695,25 +690,28 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     weekValueColumn: {
       alignItems: "flex-end",
-      gap: 6,
-      minWidth: 140,
+      gap: 4,
+      minWidth: 150,
     },
-    weekBarTrack: {
-      width: "100%",
-      height: 10,
-      borderRadius: 999,
-      backgroundColor: `${theme.colors.border}60`,
-      overflow: "hidden",
+    amountRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing.sm,
     },
-    weekBarFill: {
-      height: "100%",
-      borderRadius: 999,
+    amountLabel: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
     },
-    weekAmount: (positive: boolean) => ({
+    weekExpense: {
       fontSize: 14,
       fontWeight: "700",
-      color: positive ? theme.colors.success : theme.colors.danger,
-    }),
+      color: theme.colors.danger,
+    },
+    weekIncome: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: theme.colors.success,
+    },
     emptyStateText: {
       fontSize: 13,
       color: theme.colors.textMuted,
