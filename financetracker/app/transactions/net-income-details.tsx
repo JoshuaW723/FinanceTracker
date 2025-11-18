@@ -187,6 +187,9 @@ export default function NetIncomeDetailsScreen() {
   );
 
   const totalNet = weeklySummaries.reduce((acc, week) => acc + week.net, 0);
+  const hasWeeklyActivity = weeklySummaries.some(
+    (week) => week.income !== 0 || week.expense !== 0,
+  );
   const [chartWidth, setChartWidth] = useState(0);
 
   const { ticks, maxValue } = useMemo(() => {
@@ -422,52 +425,50 @@ export default function NetIncomeDetailsScreen() {
           </View>
         </View>
 
-        <View style={styles.listHeader}>
-          <Text style={styles.listTitle}>Weekly breakdown</Text>
-          <Text style={styles.listSubtitle}>Tap a week to view its transactions</Text>
-        </View>
-
-        {weeklySummaries.map((week) => (
-          <Pressable
-            key={week.label}
-            onPress={() => handleOpenWeek(week)}
-            style={styles.weekRow(theme)}
-            accessibilityRole="button"
-            accessibilityLabel={`Open week ${week.label}`}
-          >
-            <View style={styles.weekTopRow}>
-              <View style={styles.weekInfo}>
-                <Text style={styles.weekLabel}>{week.label}</Text>
-              </View>
-              <View style={styles.netPill(week.net >= 0, theme)}>
-                <Text style={styles.netPillText(week.net >= 0, theme)}>
-                  {formatCurrency(week.net, currency, { signDisplay: "always" })}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.weekAmountsRow}>
-              <View style={styles.weekStat(theme.colors.success, `${theme.colors.success}15`)}>
-                <Text style={styles.weekStatLabel}>Income</Text>
-                <Text style={styles.weekIncome}>{formatCurrency(week.income, currency)}</Text>
-              </View>
-              <View style={styles.weekStat(theme.colors.danger, `${theme.colors.danger}10`)}>
-                <Text style={styles.weekStatLabel}>Expense</Text>
-                <Text style={styles.weekExpense}>{formatCurrency(week.expense, currency)}</Text>
-              </View>
-            </View>
-          </Pressable>
-        ))}
-
-        {weeklySummaries.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="trending-up" size={40} color={theme.colors.textMuted} />
-            <Text style={styles.emptyTitle}>No activity</Text>
-            <Text style={styles.emptyText}>
-              Add an income or expense in this month to see net income insights.
-            </Text>
+        <View style={styles.weekCard(theme)}>
+          <View style={styles.listHeader}>
+            <Text style={styles.listTitle}>Weekly breakdown</Text>
+            <Text style={styles.listSubtitle}>Tap a week to view its transactions</Text>
           </View>
-        )}
+
+          {!weeklySummaries.length || !hasWeeklyActivity ? (
+            <Text style={styles.emptyStateText}>No weekly activity in this period.</Text>
+          ) : (
+            <View style={styles.list}>
+              {weeklySummaries.map((week) => {
+                return (
+                  <Pressable
+                    key={week.label}
+                    onPress={() => handleOpenWeek(week)}
+                    style={styles.weekRow(theme)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open week ${week.label}`}
+                  >
+                    <View style={styles.weekMeta}>
+                      <Text style={styles.weekLabel}>{week.label}</Text>
+                      <Text style={styles.weekHint}>{`${week.start.format("MMM D")} – ${week.end.format("MMM D")}`}</Text>
+                    </View>
+
+                    <View style={styles.weekValueColumn}>
+                      <View style={styles.amountRow}>
+                        <Text style={styles.amountLabel}>Expense</Text>
+                        <Text style={styles.weekExpense}>
+                          {formatCurrency(week.expense, currency)}
+                        </Text>
+                      </View>
+                      <View style={styles.amountRow}>
+                        <Text style={styles.amountLabel}>Income</Text>
+                        <Text style={styles.weekIncome}>
+                          {formatCurrency(week.income, currency)}
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -648,7 +649,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     listHeader: {
       gap: 4,
-      marginTop: theme.spacing.sm,
     },
     listTitle: {
       fontSize: 18,
@@ -656,89 +656,64 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.text,
     },
     listSubtitle: {
+      fontSize: 13,
       color: theme.colors.textMuted,
     },
-    weekRow: (theme: ReturnType<typeof useAppTheme>) => ({
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.lg,
-      paddingHorizontal: theme.spacing.lg,
-      backgroundColor: theme.colors.surface,
-      borderRadius: theme.radii.lg * 1.25,
-      marginTop: theme.spacing.xs,
-      borderWidth: 1,
-      borderColor: `${theme.colors.border}80`,
-      shadowColor: theme.colors.background,
-      shadowOpacity: 0.08,
-      shadowOffset: { width: 0, height: 6 },
-      shadowRadius: 8,
+    weekCard: (currentTheme: ReturnType<typeof useAppTheme>) => ({
+      ...currentTheme.components.card,
+      gap: currentTheme.spacing.md,
     }),
-    weekTopRow: {
+    list: {
+      gap: 10,
+    },
+    weekRow: (currentTheme: ReturnType<typeof useAppTheme>) => ({
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-    },
-    weekInfo: {
+      gap: currentTheme.spacing.md,
+      paddingVertical: currentTheme.spacing.sm,
+      borderBottomWidth: 1,
+      borderColor: `${currentTheme.colors.border}60`,
+    }),
+    weekMeta: {
+      flex: 1,
       gap: 2,
     },
     weekLabel: {
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: "700",
       color: theme.colors.text,
     },
-    weekDate: {
+    weekHint: {
+      fontSize: 12,
       color: theme.colors.textMuted,
     },
-    weekAmountsRow: {
+    weekValueColumn: {
+      alignItems: "flex-end",
+      gap: 4,
+      minWidth: 150,
+    },
+    amountRow: {
       flexDirection: "row",
+      alignItems: "center",
       gap: theme.spacing.sm,
     },
-    weekStat: (color: string, background: string) => ({
-      flex: 1,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-      borderRadius: theme.radii.lg,
-      backgroundColor: background,
-      borderWidth: 1,
-      borderColor: `${color}40`,
-      gap: 4,
-    }),
-    weekStatLabel: {
+    amountLabel: {
+      fontSize: 13,
       color: theme.colors.textMuted,
-      fontWeight: "600",
-      fontSize: 12,
-    },
-    weekIncome: {
-      color: theme.colors.success,
-      fontWeight: "700",
     },
     weekExpense: {
+      fontSize: 14,
+      fontWeight: "700",
       color: theme.colors.danger,
-      fontWeight: "700",
     },
-    netPill: (positive: boolean, theme: ReturnType<typeof useAppTheme>) => ({
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 8,
-      borderRadius: theme.radii.pill,
-      backgroundColor: positive ? `${theme.colors.success}22` : `${theme.colors.danger}22`,
-    }),
-    netPillText: (positive: boolean, theme: ReturnType<typeof useAppTheme>) => ({
-      color: positive ? theme.colors.success : theme.colors.danger,
+    weekIncome: {
+      fontSize: 14,
       fontWeight: "700",
-    }),
-    emptyState: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: theme.spacing.xl,
-      gap: theme.spacing.sm,
+      color: theme.colors.success,
     },
-    emptyTitle: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: theme.colors.text,
-    },
-    emptyText: {
+    emptyStateText: {
+      fontSize: 13,
       color: theme.colors.textMuted,
-      textAlign: "center",
-      paddingHorizontal: theme.spacing.xl,
     },
   });
